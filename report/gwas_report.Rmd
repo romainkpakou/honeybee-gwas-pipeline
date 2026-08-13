@@ -1,0 +1,228 @@
+---
+title: "honeybee-gwas-pipeline — Rapport d'analyse GWAS"
+subtitle: "Apis mellifera mellifera | Population Genomics & GWAS"
+author: "Romain KPAKOU"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    theme: flatly
+    highlight: tango
+    self_contained: true
+params:
+  pipeline_version: "1.0.0"
+  run_date: ""
+  results_dir: "."
+  maf_threshold: 0.05
+  gwas_model: "lmm"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo      = FALSE,
+    warning   = FALSE,
+    message   = FALSE,
+    fig.align = "center",
+    dpi       = 150
+)
+
+library(ggplot2)
+library(dplyr)
+library(knitr)
+
+# Palette couleurs pipeline
+COL_PRIMARY   <- "#2C3E50"
+COL_SECONDARY <- "#E67E22"
+COL_ACCENT    <- "#E74C3C"
+```
+
+## 1. Résumé du pipeline
+
+```{r pipeline_info}
+info <- data.frame(
+    Paramètre = c(
+        "Version du pipeline",
+        "Date d'analyse",
+        "Modèle GWAS",
+        "Seuil MAF",
+        "Génome de référence"
+    ),
+    Valeur = c(
+        params$pipeline_version,
+        params$run_date,
+        params$gwas_model,
+        params$maf_threshold,
+        "Amel_HAv3.1 (GCF_003254395.2)"
+    )
+)
+knitr::kable(info, caption="Paramètres du pipeline") %>%
+    kableExtra::kable_styling(bootstrap_options=c("striped","hover"))
+```
+
+## 2. Contrôle qualité des variants
+
+```{r vcf_stats}
+stats_file <- file.path(params$results_dir, "cohort.stats.txt")
+if (file.exists(stats_file)) {
+    lines <- readLines(stats_file)
+    sn_lines <- lines[grepl("^SN", lines)]
+    sn_df <- do.call(rbind, lapply(sn_lines, function(l) {
+        parts <- strsplit(l, "\t")[[1]]
+        data.frame(Métrique=parts[3], Valeur=parts[4])
+    }))
+    knitr::kable(sn_df, caption="Statistiques du VCF filtré") %>%
+        kableExtra::kable_styling(bootstrap_options=c("striped","hover"))
+} else {
+    cat("Fichier de statistiques VCF non trouvé.")
+}
+```
+
+## 3. Structure de population
+
+### 3.1 Analyse en Composantes Principales (PCA)
+
+```{r pca_plot, fig.width=10, fig.height=7}
+pca_file <- file.path(params$results_dir, "honeybee.eigenvec")
+if (file.exists(pca_file)) {
+    df <- read.table(pca_file, header=FALSE)
+    colnames(df)[1:2] <- c("FID","IID")
+    n_pc <- ncol(df) - 2
+    colnames(df)[3:ncol(df)] <- paste0("PC", 1:n_pc)
+    df$Population <- sub("_[^_]+_[^_]+$", "", df$IID)
+
+    ggplot(df, aes(x=PC1, y=PC2, colour=Population)) +
+        geom_point(size=3, alpha=0.85) +
+        stat_ellipse(level=0.95, linetype="dashed") +
+        labs(
+            title = "PCA — Structure de population",
+            x     = "PC1", y = "PC2"
+        ) +
+        theme_classic(base_size=12) +
+        theme(plot.title=element_text(face="bold"))
+} else {
+    cat("Fichier PCA non trouvé.")
+}
+```
+
+### 3.2 Structure ADMIXTURE
+
+```{r admixture_plot, fig.width=14, fig.height=8}
+q_files <- list.files(params$results_dir,
+                      pattern="\\.Q$", full.names=TRUE)
+if (length(q_files) > 0) {
+    plots <- lapply(sort(q_files), function(f) {
+        k  <- as.integer(gsub(".*\\.(\\d+)\\.Q$", "\\1", basename(f)))
+        q  <- read.table(f, header=FALSE)
+        colnames(q) <- paste0("Anc", 1:ncol(q))
+        q$Sample <- paste0("S", 1:nrow(q))
+        q_long <- tidyr::pivot_longer(q, -Sample,
+                                      names_to="Ancestry",
+                                      values_to="Proportion")
+        ggplot(q_long, aes(x=Sample, y=Proportion, fill=Ancestry)) +
+            geom_bar(stat="identity", width=1) +
+            scale_y_continuous(expand=c(0,0)) +
+            labs(title=sprintf("K = %d", k), x=NULL) +
+            theme_classic(base_size=9) +
+            theme(axis.text.x=element_blank(),
+                  axis.ticks.x=element_blank())
+    })
+    gridExtra::grid.arrange(grobs=plots, ncol=1)
+} else {
+    cat("Fichiers ADMIXTURE non trouvés.")
+}
+```
+
+## 4. Résultats GWAS
+
+### 4.1 Manhattan plot
+
+```{r manhattan, fig.width=14, fig.height=6}
+assoc_file <- file.path(params$results_dir,
+                        "output/honeybee.assoc.annotated.txt")
+if (file.exists(assoc_file)) {
+    df <- read.table(assoc_file, header=TRUE, sep="\t")
+    if ("p_wald" %in% names(df)) df$P <- df$p_wald
+    if ("chr"    %in% names(df)) df$CHR <- as.integer(df$chr)
+    if ("ps"     %in% names(df)) df$BP  <- df$ps
+    df <- df[!is.na(df$P) & df$P > 0 & !is.na(df$CHR), ]
+    df$LOG10P <- -log10(df$P)
+
+    n_snps     <- nrow(df)
+    bonferroni <- 0.05 / n_snps
+
+    chr_lengths <- df %>%
+        group_by(CHR) %>%
+        summarise(max_bp=max(BP), .groups='drop') %>%
+        arrange(CHR) %>%
+        mutate(bp_offset=cumsum(lag(max_bp, default=0)))
+
+    df <- df %>%
+        left_join(chr_lengths, by="CHR") %>%
+        mutate(BP_cum=BP + bp_offset)
+
+    axis_df <- df %>%
+        group_by(CHR) %>%
+        summarise(center=(max(BP_cum)+min(BP_cum))/2, .groups='drop')
+
+    ggplot(df, aes(x=BP_cum, y=LOG10P, colour=as.factor(CHR))) +
+        geom_point(size=0.6, alpha=0.7) +
+        scale_colour_manual(
+            values=rep(c(COL_PRIMARY, COL_SECONDARY), 16)
+        ) +
+        scale_x_continuous(labels=axis_df$CHR,
+                            breaks=axis_df$center) +
+        geom_hline(yintercept=-log10(bonferroni),
+                   colour="red", linetype="dashed") +
+        geom_hline(yintercept=-log10(1e-5),
+                   colour="orange", linetype="dashed") +
+        labs(
+            title = "Manhattan Plot — GWAS",
+            x     = "Chromosome",
+            y     = expression(-log[10](p))
+        ) +
+        theme_classic(base_size=11) +
+        theme(legend.position="none",
+              plot.title=element_text(face="bold"))
+} else {
+    cat("Fichier de résultats GWAS non trouvé.")
+}
+```
+
+### 4.2 Top SNPs significatifs
+
+```{r top_snps}
+if (exists("df") && nrow(df) > 0) {
+    top_snps <- df %>%
+        arrange(P) %>%
+        head(20) %>%
+        select(CHR, BP, P, LOG10P) %>%
+        mutate(
+            P       = formatC(P, format="e", digits=2),
+            LOG10P  = round(LOG10P, 2)
+        )
+    knitr::kable(top_snps,
+                 caption="Top 20 SNPs les plus significatifs",
+                 col.names=c("Chr","Position","p-value","-log10(p)")) %>%
+        kableExtra::kable_styling(bootstrap_options=c("striped","hover"))
+}
+```
+
+## 5. Informations de session
+
+```{r session_info}
+si <- sessionInfo()
+cat(sprintf("R version : %s\n", si$R.version$version.string))
+cat(sprintf("Plateforme : %s\n", si$platform))
+cat("Packages chargés :\n")
+for (pkg in names(si$otherPkgs)) {
+    cat(sprintf("  %s : %s\n", pkg,
+                as.character(packageVersion(pkg))))
+}
+```
+
+---
+*Rapport généré par honeybee-gwas-pipeline v`r params$pipeline_version`*
+*Auteur : Romain KPAKOU | github.com/romainkpakou*
