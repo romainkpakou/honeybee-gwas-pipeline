@@ -1,1 +1,36 @@
 .nextflow.log*
+# Nextflow
+.nextflow/
+.nextflow.log*
+work/
+
+# Résultats (trop volumineux pour GitHub)
+results/
+test_results/
+!results/.gitkeep
+
+# Données brutes
+data/reference/*.fa
+data/reference/*.fasta
+data/reference/*.fa.gz
+data/reference/*.fai
+data/reference/*.dict
+data/reference/*.amb
+data/reference/*.ann
+data/reference/*.bwt*
+data/reference/*.pac
+data/reference/*.sa
+data/reference/*.0123
+data/samples/*.fastq*
+data/samples/*.bam
+data/samples/*.cram
+
+# Fichiers temporaires
+*.tmp
+*.log
+*.pyc
+__pycache__/
+.DS_Store
+*.Rhistory
+*.RData
+tmp/
