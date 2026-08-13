@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# honeybee-gwas-pipeline — Fichier de paramètres utilisateur
+# Author  : Romain KPAKOU
+#
+# USAGE :
+#   nextflow run main.nf -params-file conf/params.yml -profile docker
+#
+# Ce fichier centralise TOUS les paramètres modifiables du pipeline.
+# Ne jamais toucher main.nf ou les modules pour changer un paramètre —
+# tout se fait ici.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Entrée / Sortie ───────────────────────────────────────────────────────────
+input:          "samplesheet.csv"
+outdir:         "results"
+genome:         "data/reference/Amel_HAv3.1.fa"
+phenotype_file: "data/phenotypes/phenotypes.txt"
+
+# ── Contrôle qualité des reads ────────────────────────────────────────────────
+# min_quality : score Phred minimum par base (20 = 99% de précision)
+# min_length  : longueur minimale d'un read après trimming (en bp)
+min_quality: 20
+min_length:  50
+
+# ── Alignement ────────────────────────────────────────────────────────────────
+# bwa_threads : nombre de threads pour BWA-MEM2
+bwa_threads: 8
+
+# ── GATK — Variant calling ────────────────────────────────────────────────────
+# Mémoire Java pour les outils GATK (adapter selon la RAM disponible)
+gatk_java: "-Xmx8g"
+
+# Filtres hard-filter SNPs (GATK Best Practices)
+# QD  : Quality by Depth — évite les faux variants dans les régions à faible couverture
+# FS  : FisherStrand — détecte le biais de brin (strand bias)
+# MQ  : MappingQuality — qualité d'alignement des reads portant le variant
+# SOR : StrandOddsRatio — autre mesure du biais de brin
+snp_qd:          2.0
+snp_fs:          60.0
+snp_mq:          40.0
+snp_sor:         3.0
+snp_mqranksum:  -12.5
+snp_readposrank: -8.0
+
+# ── Contrôle qualité génotypique (PLINK2) ─────────────────────────────────────
+# maf  : Minor Allele Frequency — exclut les SNPs trop rares (< 5%)
+#        Les SNPs très rares manquent de puissance statistique en GWAS
+# geno : taux de génotypage manquant par SNP (> 5% = SNP exclu)
+# mind : taux de génotypage manquant par individu (> 10% = individu exclu)
+# hwe  : seuil Hardy-Weinberg — détecte les erreurs de génotypage
+maf:  0.05
+geno: 0.05
+mind: 0.10
+hwe:  0.000001
+
+# ── Élagage du déséquilibre de liaison (LD pruning) ──────────────────────────
+# Supprime les SNPs en fort LD avant PCA et ADMIXTURE
+# ld_window : taille de la fenêtre glissante (en kb)
+# ld_step   : pas de déplacement de la fenêtre
+# ld_r2     : seuil de r² au-dessus duquel un SNP est éliminé
+ld_window: 50
+ld_step:   10
+ld_r2:     0.2
+
+# ── ADMIXTURE ─────────────────────────────────────────────────────────────────
+# Valeurs de K à tester (nombre de populations ancestrales)
+# Le meilleur K est sélectionné par cross-validation error
+admixture_k: "2,3,4,5"
+
+# ── GWAS ─────────────────────────────────────────────────────────────────────
+# gwas_model : lmm = Linear Mixed Model via GEMMA (recommandé)
+#              linear / logistic = PLINK2 (plus simple, moins robuste)
+# gwas_pval  : seuil de significativité
+#              5e-8 = seuil standard humain
+#              1e-6 = seuil adapté aux génomes plus petits (abeille = 250 Mb)
+gwas_model: "lmm"
+gwas_pval:  0.000001
+
+# ── Ressources maximales ──────────────────────────────────────────────────────
+# Adapter selon la machine ou le cluster disponible
+max_cpus:   16
+max_memory: "64.GB"
+max_time:   "72.h"
