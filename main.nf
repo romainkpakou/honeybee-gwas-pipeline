@@ -345,7 +345,7 @@ workflow {
     )
     PLOT_ADMIXTURE(
         ADMIXTURE_RUN.out.q_files.collect(),
-        ch_plink.map { bed, bim, fam -> fam }
+        PLINK2_QC.out.plink_files.map { it[2] }.first()
     )
     PLOT_LD_DECAY(VCFTOOLS_LD.out.ld)
     PLOT_FST(VCFTOOLS_FST.out.fst)
@@ -362,12 +362,12 @@ workflow {
     //                  Intègre toutes les figures et statistiques clés
     // MULTIQC_FINAL  : agrège les stats alignement + déduplication + variants
     //
-    // Note : .map { meta, f -> f } extrait le fichier du tuple [meta, fichier]
+    // Note : .map { it[1] } extrait le fichier du tuple [meta, fichier]
     //        car MultiQC ne veut pas les métadonnées
     // ─────────────────────────────────────────────────────────────────────────
     ch_report_inputs = BCFTOOLS_STATS.out.stats
-        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta, f -> f })
-        .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta, f -> f })
+        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { it[1] })
+        .mix(PICARD_MARKDUPLICATES.out.metrics.map { it[1] })
         .mix(PLINK2_PCA.out.eigenvec)
         .mix(ADMIXTURE_RUN.out.q_files.flatten())
         .mix(VCFTOOLS_LD.out.ld)
@@ -382,8 +382,8 @@ workflow {
 
     // MultiQC final agrège alignement + déduplication + stats variants
     ch_final_multiqc = BCFTOOLS_STATS.out.stats
-        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta, f -> f })
-        .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta, f -> f })
+        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { it[1] })
+        .mix(PICARD_MARKDUPLICATES.out.metrics.map { it[1] })
         .collect()
     MULTIQC_FINAL(ch_final_multiqc, 'final')
 
