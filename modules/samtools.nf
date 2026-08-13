@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : SAMtools
     Outil   : SAMtools v1.19.2

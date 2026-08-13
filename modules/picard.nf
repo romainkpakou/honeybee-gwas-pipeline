@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : Picard MarkDuplicates
     Outil   : Picard v3.1.1

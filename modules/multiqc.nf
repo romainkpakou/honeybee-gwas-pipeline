@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : MultiQC
     Outil   : MultiQC v1.21

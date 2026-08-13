@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : bcftools
     Outil   : bcftools v1.19

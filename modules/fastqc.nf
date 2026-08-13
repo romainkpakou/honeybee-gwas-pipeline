@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : FastQC
     Outil   : FastQC v0.12.1

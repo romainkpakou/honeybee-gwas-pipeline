@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : GWAS Report
     Outil   : R Markdown + knitr

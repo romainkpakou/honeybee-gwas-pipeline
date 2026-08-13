@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : fastp
     Outil   : fastp v0.23.4

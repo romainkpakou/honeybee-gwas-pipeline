@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : PLINK2
     Outil   : PLINK2 v2.00a5.12

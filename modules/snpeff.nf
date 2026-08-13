@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : SnpEff
     Outil   : SnpEff v5.2

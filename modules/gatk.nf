@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : GATK4
     Outil   : GATK v4.5.0.0

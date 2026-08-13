@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : BWA-MEM2
     Outil   : bwa-mem2 v2.2.1

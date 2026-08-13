@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : ADMIXTURE
     Outil   : ADMIXTURE v1.3.0

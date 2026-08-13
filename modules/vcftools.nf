@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : vcftools
     Outil   : vcftools v0.1.16

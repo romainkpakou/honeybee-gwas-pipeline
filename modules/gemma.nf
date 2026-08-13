@@ -1,3 +1,5 @@
+nextflow.enable.dsl = 2
+
 /*
     MODULE : GEMMA
     Outil   : GEMMA v0.98.5
