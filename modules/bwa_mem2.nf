@@ -27,7 +27,7 @@ process BWA_MEM2_INDEX {
 
     publishDir "${params.outdir}/02_alignment/index", mode: 'copy'
 
-    container 'quay.io/biocontainers/mulled-v2-ac74a7f02cebcfcc07ce8a491b629aa1d907e125:a0ffedb52808e102887f6f7272d6069923d8a7be-0'
+    container 'quay.io/biocontainers/bwa-mem2:2.2.1--hd03093a_5'
 
     input:
     path genome
@@ -64,14 +64,14 @@ process BWA_MEM2_ALIGN {
 
     publishDir "${params.outdir}/02_alignment/bam", mode: 'copy'
 
-    container 'quay.io/biocontainers/mulled-v2-ac74a7f02cebcfcc07ce8a491b629aa1d907e125:a0ffedb52808e102887f6f7272d6069923d8a7be-0'
+    container 'quay.io/biocontainers/bwa-mem2:2.2.1--hd03093a_5'
 
     input:
     tuple val(meta), path(reads)
     tuple path(genome), path(index)
 
     output:
-    tuple val(meta), path("${meta.id}.bam"), emit: bam
+    tuple val(meta), path("${meta.id}.sam"), emit: bam
     path "versions.yml",                      emit: versions
 
     script:
@@ -87,11 +87,8 @@ process BWA_MEM2_ALIGN {
         -R "${rg}" \\
         -M \\
         ${genome} \\
-        ${reads_input} | \\
-    samtools view \\
-        -@ ${task.cpus} \\
-        -bS \\
-        -o ${meta.id}.bam
+        ${reads_input} \\
+        > ${meta.id}.sam
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -102,7 +99,7 @@ process BWA_MEM2_ALIGN {
 
     stub:
     """
-    touch ${meta.id}.bam
+    touch ${meta.id}.sam
     touch versions.yml
     """
 }
