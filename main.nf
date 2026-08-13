@@ -3,102 +3,67 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     honeybee-gwas-pipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    Author      : Romain KPAKOU
-    Description : End-to-end WGS and GWAS pipeline for Apis mellifera mellifera
+    Auteur      : Romain KPAKOU
+    Description : Pipeline WGS et GWAS pour Apis mellifera mellifera
     Version     : 1.0.0
     GitHub      : https://github.com/romainkpakou/honeybee-gwas-pipeline
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    ÉTAPES DU PIPELINE
-    ──────────────────
-    1.  QC reads          FastQC, fastp, MultiQC
-    2.  Alignement        BWA-MEM2, SAMtools
-    3.  BAM processing    Picard MarkDuplicates
+
+    ÉTAPES :
+    1.  QC reads          FastQC · fastp · MultiQC
+    2.  Alignement        BWA-MEM2 · SAMtools
+    3.  BAM               Picard MarkDuplicates
     4.  Variant calling   GATK HaplotypeCaller (GVCF)
-    5.  Génotypage joint  GATK GenomicsDBImport, GenotypeGVCFs
-    6.  Filtrage          GATK VariantFiltration, bcftools
-    7.  Annotation        SnpEff
-    8.  Génétique pop.    PLINK2 QC+PCA, ADMIXTURE, vcftools FST+LD
-    9.  GWAS              GEMMA kinship + LMM, PLINK2
-    10. Visualisation     R (Manhattan, QQ, PCA, Admixture, LD, FST)
+    5.  Génotypage joint  GATK GenomicsDBImport · GenotypeGVCFs
+    6.  Filtrage          GATK VariantFiltration · bcftools
+    7.  Annotation        SnpEff (Apis_mellifera)
+    8.  Génétique pop.    PLINK2 · ADMIXTURE · vcftools
+    9.  GWAS              GEMMA LMM · PLINK2
+    10. Visualisation     R (Manhattan · QQ · PCA · Admixture · LD · FST)
     11. Rapport           R Markdown HTML/PDF
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
 nextflow.enable.dsl = 2
 
-// ── Aide ──────────────────────────────────────────────────────────────────────
-if (params.help) {
-    log.info """
-    ╔══════════════════════════════════════════════════════════════════╗
-    ║        honeybee-gwas-pipeline v${manifest.version}
-    ║   WGS & GWAS — Apis mellifera mellifera
-    ╚══════════════════════════════════════════════════════════════════╝
-
-    Usage:
-        nextflow run main.nf \\
-            --input samplesheet.csv \\
-            --genome data/reference/Amel_HAv3.1.fa \\
-            --phenotype_file data/phenotypes/phenotypes.txt \\
-            --outdir results \\
-            -profile docker
-
-    Arguments obligatoires:
-        --input           Samplesheet CSV (sample,fastq_1,fastq_2,sex,population)
-        --genome          Génome de référence FASTA (Amel_HAv3.1)
-
-    Arguments optionnels:
-        --phenotype_file  Fichier phénotypes pour GWAS
-        --outdir          Répertoire de sortie (défaut: results)
-        --maf             Seuil MAF (défaut: 0.05)
-        --gwas_model      Modèle GWAS: lmm ou linear (défaut: lmm)
-        --admixture_k     Valeurs K ADMIXTURE (défaut: 2,3,4,5)
-        --help            Afficher cette aide
-
-    Profils:
-        -profile docker       Docker (local)
-        -profile singularity  Singularity (HPC)
-        -profile slurm        SLURM + Singularity
-        -profile test         Données de test
-    """.stripIndent()
-    System.exit(0)
-}
-
 // ── Import des modules ────────────────────────────────────────────────────────
-include { FASTQC                    } from './modules/fastqc'
-include { FASTP                     } from './modules/fastp'
-include { MULTIQC as MULTIQC_QC     } from './modules/multiqc'
-include { MULTIQC as MULTIQC_FINAL  } from './modules/multiqc'
-include { BWA_MEM2_INDEX            } from './modules/bwa_mem2'
-include { BWA_MEM2_ALIGN            } from './modules/bwa_mem2'
-include { SAMTOOLS_SORT             } from './modules/samtools'
-include { SAMTOOLS_INDEX            } from './modules/samtools'
-include { SAMTOOLS_FLAGSTAT         } from './modules/samtools'
-include { PICARD_MARKDUPLICATES     } from './modules/picard'
-include { GATK_HAPLOTYPECALLER      } from './modules/gatk'
-include { GATK_GENOMICSDBIMPORT     } from './modules/gatk'
-include { GATK_GENOTYPEGVCFS        } from './modules/gatk'
-include { GATK_VARIANTFILTRATION    } from './modules/gatk'
-include { BCFTOOLS_FILTER           } from './modules/bcftools'
-include { BCFTOOLS_STATS            } from './modules/bcftools'
-include { SNPEFF_ANNOTATE           } from './modules/snpeff'
-include { PLINK2_QC                 } from './modules/plink2'
-include { PLINK2_PCA                } from './modules/plink2'
-include { PLINK2_GWAS               } from './modules/plink2'
-include { ADMIXTURE_RUN             } from './modules/admixture'
-include { VCFTOOLS_FST              } from './modules/vcftools'
-include { VCFTOOLS_LD               } from './modules/vcftools'
-include { VCFTOOLS_PI               } from './modules/vcftools'
-include { GEMMA_KINSHIP             } from './modules/gemma'
-include { GEMMA_LMM                 } from './modules/gemma'
-include { PLOT_MANHATTAN            } from './modules/r_plots'
-include { PLOT_QQ                   } from './modules/r_plots'
-include { PLOT_PCA                  } from './modules/r_plots'
-include { PLOT_ADMIXTURE            } from './modules/r_plots'
-include { PLOT_LD_DECAY             } from './modules/r_plots'
-include { PLOT_FST                  } from './modules/r_plots'
-include { GWAS_REPORT               } from './modules/report'
+include { FASTQC                   } from './modules/fastqc'
+include { FASTP                    } from './modules/fastp'
+include { MULTIQC as MULTIQC_QC    } from './modules/multiqc'
+include { MULTIQC as MULTIQC_FINAL } from './modules/multiqc'
+include { BWA_MEM2_INDEX           } from './modules/bwa_mem2'
+include { BWA_MEM2_ALIGN           } from './modules/bwa_mem2'
+include { SAMTOOLS_SORT            } from './modules/samtools'
+include { SAMTOOLS_INDEX           } from './modules/samtools'
+include { SAMTOOLS_FLAGSTAT        } from './modules/samtools'
+include { PICARD_MARKDUPLICATES    } from './modules/picard'
+include { GATK_HAPLOTYPECALLER     } from './modules/gatk'
+include { GATK_GENOMICSDBIMPORT    } from './modules/gatk'
+include { GATK_GENOTYPEGVCFS       } from './modules/gatk'
+include { GATK_VARIANTFILTRATION   } from './modules/gatk'
+include { BCFTOOLS_FILTER          } from './modules/bcftools'
+include { BCFTOOLS_STATS           } from './modules/bcftools'
+include { SNPEFF_ANNOTATE          } from './modules/snpeff'
+include { PLINK2_QC                } from './modules/plink2'
+include { PLINK2_PCA               } from './modules/plink2'
+include { PLINK2_GWAS              } from './modules/plink2'
+include { ADMIXTURE_RUN            } from './modules/admixture'
+include { VCFTOOLS_FST             } from './modules/vcftools'
+include { VCFTOOLS_LD              } from './modules/vcftools'
+include { VCFTOOLS_PI              } from './modules/vcftools'
+include { GEMMA_KINSHIP            } from './modules/gemma'
+include { GEMMA_LMM                } from './modules/gemma'
+include { PLOT_MANHATTAN           } from './modules/r_plots'
+include { PLOT_QQ                  } from './modules/r_plots'
+include { PLOT_PCA                 } from './modules/r_plots'
+include { PLOT_ADMIXTURE           } from './modules/r_plots'
+include { PLOT_LD_DECAY            } from './modules/r_plots'
+include { PLOT_FST                 } from './modules/r_plots'
+include { GWAS_REPORT              } from './modules/report'
 
-// ── Fonction : parser le samplesheet ─────────────────────────────────────────
+// ── Fonction : parser le samplesheet CSV ─────────────────────────────────────
+// Lit le samplesheet ligne par ligne et crée un canal Nextflow
+// Chaque élément = [meta, [fastq_1, fastq_2]]
+// meta = map contenant id, population, sex
 def parseSamplesheet(csv) {
     Channel
         .fromPath(csv)
@@ -110,85 +75,125 @@ def parseSamplesheet(csv) {
                 sex        : row.sex        ?: 'unknown'
             ]
             def fq1 = file(row.fastq_1, checkIfExists: true)
-            def fq2 = row.fastq_2 ? file(row.fastq_2, checkIfExists: true) : null
+            def fq2 = row.fastq_2
+                ? file(row.fastq_2, checkIfExists: true)
+                : null
             fq2 ? [meta, [fq1, fq2]] : [meta, [fq1]]
         }
 }
 
-// ── Log de démarrage ──────────────────────────────────────────────────────────
+// ── Validation des paramètres obligatoires ────────────────────────────────────
+// Vérifie que les fichiers requis existent avant de démarrer
+def validateParams() {
+    if (!params.input) {
+        error "ERREUR : --input est obligatoire. Exemple : --input samplesheet.csv"
+    }
+    if (!params.genome) {
+        error "ERREUR : --genome est obligatoire. Exemple : --genome data/reference/Amel_HAv3.1.fa"
+    }
+    if (!file(params.input).exists()) {
+        error "ERREUR : Samplesheet introuvable : ${params.input}"
+    }
+    if (!file(params.genome).exists()) {
+        error "ERREUR : Génome introuvable : ${params.genome}"
+    }
+}
+
+// ── Message de démarrage ──────────────────────────────────────────────────────
 log.info """
 ╔══════════════════════════════════════════════════════════════════╗
 ║        honeybee-gwas-pipeline v${manifest.version}
 ║   WGS & GWAS — Apis mellifera mellifera
 ╚══════════════════════════════════════════════════════════════════╝
-  Samplesheet     : ${params.input}
-  Génome          : ${params.genome}
-  Phénotypes      : ${params.phenotype_file ?: 'non fourni — GWAS ignoré'}
-  Sortie          : ${params.outdir}
-  Modèle GWAS     : ${params.gwas_model}
-  MAF             : ${params.maf}
-  ADMIXTURE K     : ${params.admixture_k}
-  Profil          : ${workflow.profile}
+  Samplesheet  : ${params.input}
+  Génome       : ${params.genome}
+  Phénotypes   : ${params.phenotype_file ?: 'non fourni — GWAS ignoré'}
+  Sortie       : ${params.outdir}
+  Modèle GWAS  : ${params.gwas_model}
+  MAF          : ${params.maf}
+  ADMIXTURE K  : ${params.admixture_k}
+  Profil       : ${workflow.profile}
 """.stripIndent()
 
 // ── Workflow principal ────────────────────────────────────────────────────────
 workflow {
 
+    // Validation des paramètres
+    validateParams()
+
     // ── Canaux d'entrée ───────────────────────────────────────────────────────
-    ch_reads  = parseSamplesheet(params.input)
+    // Canal des reads : un élément par échantillon
+    ch_reads = parseSamplesheet(params.input)
+
+    // Canal du génome : valeur unique partagée par tous les process
     ch_genome = Channel.value(file(params.genome))
-    ch_pheno  = params.phenotype_file
+
+    // Canal des phénotypes : vide si pas fourni (GWAS ignoré)
+    ch_pheno = params.phenotype_file
         ? Channel.value(file(params.phenotype_file))
         : Channel.empty()
 
-    // Valeurs de K pour ADMIXTURE
-    ch_k_values = Channel.of(
-        params.admixture_k.split(',').collect { it.trim() as Integer }
-    ).flatten()
+    // Canal des valeurs K pour ADMIXTURE
+    // params.admixture_k = "2,3,4,5" → Channel.of(2, 3, 4, 5)
+    ch_k_values = Channel
+        .of(params.admixture_k.split(',').collect { it.trim() as Integer })
+        .flatten()
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 1 — Contrôle qualité des reads
+    // FastQC analyse la qualité brute
+    // fastp filtre les adaptateurs et les reads de mauvaise qualité
+    // MultiQC agrège tous les rapports en un seul HTML
     // ─────────────────────────────────────────────────────────────────────────
     FASTQC(ch_reads)
     FASTP(ch_reads)
 
-    // Rapport MultiQC QC
     ch_qc_reports = FASTQC.out.zip
         .mix(FASTP.out.json)
         .collect()
     MULTIQC_QC(ch_qc_reports, 'qc')
 
-    // Reads filtrés → étape suivante
+    // Reads filtrés → alignement
     ch_trimmed = FASTP.out.reads
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 2 — Alignement
+    // ÉTAPE 2 — Alignement sur le génome de référence Amel_HAv3.1
+    // BWA-MEM2_INDEX : indexe le génome une seule fois
+    // BWA-MEM2_ALIGN : aligne les reads de chaque échantillon
+    // SAMTOOLS_SORT  : trie le BAM par coordonnées (requis par GATK)
+    // SAMTOOLS_INDEX : crée l'index .bai pour accès rapide
+    // SAMTOOLS_FLAGSTAT : statistiques d'alignement
     // ─────────────────────────────────────────────────────────────────────────
     BWA_MEM2_INDEX(ch_genome)
     BWA_MEM2_ALIGN(ch_trimmed, BWA_MEM2_INDEX.out.index)
-
     SAMTOOLS_SORT(BWA_MEM2_ALIGN.out.bam)
     SAMTOOLS_INDEX(SAMTOOLS_SORT.out.bam)
     SAMTOOLS_FLAGSTAT(SAMTOOLS_SORT.out.bam)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 3 — Traitement BAM
+    // ÉTAPE 3 — Traitement du BAM
+    // Picard MarkDuplicates identifie les duplicats PCR
+    // Les duplicats sont marqués (pas supprimés) — GATK les ignore
     // ─────────────────────────────────────────────────────────────────────────
     PICARD_MARKDUPLICATES(SAMTOOLS_SORT.out.bam)
 
-    // BAM + index pour GATK
+    // BAM dédupliqué + index → GATK
     ch_dedup_bam = PICARD_MARKDUPLICATES.out.bam
         .join(PICARD_MARKDUPLICATES.out.bai)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 4 — Variant calling (GVCF par échantillon)
+    // ÉTAPE 4 — Variant calling individuel (GVCF mode)
+    // HaplotypeCaller produit un GVCF par échantillon
+    // Le GVCF contient la confiance de génotypage à chaque position
     // ─────────────────────────────────────────────────────────────────────────
     GATK_HAPLOTYPECALLER(ch_dedup_bam, ch_genome)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 5 — Génotypage joint
+    // ÉTAPE 5 — Génotypage joint de tous les échantillons
+    // GenomicsDBImport consolide tous les GVCFs
+    // GenotypeGVCFs produit le VCF multi-échantillons final
+    // Le génotypage joint est plus puissant qu'un génotypage individuel
     // ─────────────────────────────────────────────────────────────────────────
-    // Collecter tous les GVCFs avant GenomicsDBImport
     ch_all_gvcfs = GATK_HAPLOTYPECALLER.out.gvcf
         .mix(GATK_HAPLOTYPECALLER.out.tbi)
         .collect()
@@ -198,6 +203,9 @@ workflow {
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 6 — Filtrage des variants
+    // VariantFiltration applique les filtres GATK Best Practices
+    // bcftools garde uniquement les variants PASS bialléliques (SNPs)
+    // bcftools stats calcule Ts/Tv, nombre de SNPs, MAF spectrum
     // ─────────────────────────────────────────────────────────────────────────
     GATK_VARIANTFILTRATION(GATK_GENOTYPEGVCFS.out.vcf, ch_genome)
     BCFTOOLS_FILTER(GATK_VARIANTFILTRATION.out.vcf)
@@ -205,12 +213,18 @@ workflow {
     ch_filtered_vcf = BCFTOOLS_FILTER.out.vcf
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 7 — Annotation fonctionnelle
+    // ÉTAPE 7 — Annotation fonctionnelle des variants
+    // SnpEff prédit l'effet de chaque SNP sur les gènes d'Apis mellifera
+    // (missense, synonyme, stop_gained, intronique, intergénique...)
     // ─────────────────────────────────────────────────────────────────────────
     SNPEFF_ANNOTATE(ch_filtered_vcf)
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 8 — Génétique des populations
+    // PLINK2_QC  : filtres MAF, geno, mind, HWE + élagage LD
+    // PLINK2_PCA : analyse en composantes principales
+    // ADMIXTURE  : structure de population (K=2..5 en parallèle)
+    // vcftools   : FST entre populations, déclin LD, diversité π
     // ─────────────────────────────────────────────────────────────────────────
     PLINK2_QC(ch_filtered_vcf)
     ch_plink = PLINK2_QC.out.plink_files
@@ -222,11 +236,13 @@ workflow {
     VCFTOOLS_PI(ch_filtered_vcf)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 9 — GWAS
+    // ÉTAPE 9 — GWAS (si fichier phénotype fourni)
+    // GEMMA_KINSHIP : matrice de parenté génomique (N×N)
+    // GEMMA_LMM     : GWAS par modèle mixte linéaire
+    //                 Corrige la stratification via la matrice de parenté
+    // PLINK2_GWAS   : GWAS complémentaire (linéaire/logistique)
     // ─────────────────────────────────────────────────────────────────────────
     if (params.phenotype_file) {
-
-        // GEMMA : matrice de parenté puis LMM
         GEMMA_KINSHIP(ch_plink)
         GEMMA_LMM(
             ch_plink,
@@ -234,17 +250,20 @@ workflow {
             ch_pheno
         )
         ch_gwas_results = GEMMA_LMM.out.annotated
-
-        // PLINK2 en complément
         PLINK2_GWAS(ch_plink, ch_pheno)
-
     } else {
-        log.warn "Pas de fichier phénotype fourni — étapes GWAS ignorées."
+        log.warn "Pas de fichier phénotype — étapes GWAS ignorées."
         ch_gwas_results = Channel.empty()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 10 — Visualisation
+    // ÉTAPE 10 — Visualisation (figures publication-ready)
+    // PCA plot       : structure de population (PC1 vs PC2/PC3)
+    // Admixture plot : barplot proportions d'ascendance (K=2..5)
+    // LD decay plot  : courbe de déclin du LD
+    // FST plot       : différenciation génétique par fenêtres
+    // Manhattan plot : résultats GWAS (si phénotype fourni)
+    // QQ plot        : contrôle inflation génomique (lambda GC)
     // ─────────────────────────────────────────────────────────────────────────
     PLOT_PCA(
         PLINK2_PCA.out.eigenvec,
@@ -263,7 +282,9 @@ workflow {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 11 — Rapport final
+    // ÉTAPE 11 — Rapport scientifique final
+    // Collecte tous les résultats et génère un rapport HTML/PDF
+    // via R Markdown avec table des matières interactive
     // ─────────────────────────────────────────────────────────────────────────
     ch_report_inputs = BCFTOOLS_STATS.out.stats
         .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta, f -> f })
@@ -280,7 +301,7 @@ workflow {
 
     GWAS_REPORT(ch_report_inputs.collect())
 
-    // Rapport MultiQC final
+    // MultiQC final — agrège les stats d'alignement et de variants
     ch_final_multiqc = BCFTOOLS_STATS.out.stats
         .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta, f -> f })
         .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta, f -> f })
@@ -288,21 +309,21 @@ workflow {
     MULTIQC_FINAL(ch_final_multiqc, 'final')
 }
 
-// ── Messages de fin ───────────────────────────────────────────────────────────
+// ── Message de fin ────────────────────────────────────────────────────────────
 workflow.onComplete {
     def status = workflow.success ? "SUCCÈS" : "ÉCHEC"
     log.info """
-    ════════════════════════════════════════════════════
+    ════════════════════════════════════════════════════════
     Pipeline terminé — ${status}
-    ────────────────────────────────────────────────────
-    Durée       : ${workflow.duration}
-    Résultats   : ${params.outdir}/
-    Rapport     : ${params.outdir}/06_report/gwas_report.html
-    MultiQC     : ${params.outdir}/pipeline_info/report.html
-    ════════════════════════════════════════════════════
+    ────────────────────────────────────────────────────────
+    Durée      : ${workflow.duration}
+    Résultats  : ${params.outdir}/
+    Rapport    : ${params.outdir}/06_report/gwas_report.html
+    MultiQC    : ${params.outdir}/pipeline_info/report.html
+    ════════════════════════════════════════════════════════
     """.stripIndent()
 }
 
 workflow.onError {
-    log.error "Pipeline échoué — consultez la trace : ${params.outdir}/pipeline_info/trace.txt"
+    log.error "Pipeline échoué — trace : ${params.outdir}/pipeline_info/trace.txt"
 }
