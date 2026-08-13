@@ -1,4 +1,3 @@
-nextflow.enable.dsl = 2
 
 /*
     MODULE : fastp
@@ -13,7 +12,7 @@ process FASTP {
     tag "${meta.id}"
     label 'process_medium'
 
-    publishDir "${params.outdir}/01_qc/fastp/${meta.id}", mode: 'copy'
+    publishDir "${params.outdir}/01_qc/fastp", mode: "copy"
 
     container 'quay.io/biocontainers/fastp:0.23.4--hadf994f_2'
 

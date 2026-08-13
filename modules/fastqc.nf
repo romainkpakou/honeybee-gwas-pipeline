@@ -1,4 +1,3 @@
-nextflow.enable.dsl = 2
 
 /*
     MODULE : FastQC
@@ -14,7 +13,7 @@ process FASTQC {
     tag "${meta.id}"
     label 'process_low'
 
-    publishDir "${params.outdir}/01_qc/fastqc/${meta.id}", mode: 'copy'
+    publishDir "${params.outdir}/01_qc/fastqc", mode: "copy", saveAs: { fn -> "${meta.id}/${fn}" }
 
     container 'quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0'
 
