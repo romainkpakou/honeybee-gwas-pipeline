@@ -388,22 +388,6 @@ workflow {
     MULTIQC_FINAL(ch_final_multiqc, 'final')
 
     // ── Handlers de fin (DSL2 v26 : doivent être DANS le workflow) ────────────
-    workflow.onComplete {
-        def status = workflow.success ? "SUCCÈS" : "ÉCHEC"
-        log.info """
-        ════════════════════════════════════════════════════════
-        Pipeline terminé — ${status}
-        ────────────────────────────────────────────────────────
-        Durée      : ${workflow.duration}
-        Résultats  : ${params.outdir}/
-        Rapport    : ${params.outdir}/06_report/gwas_report.html
-        MultiQC    : ${params.outdir}/pipeline_info/report.html
-        ════════════════════════════════════════════════════════
-        """.stripIndent()
-    }
-
-    workflow.onError {
-        log.error "Pipeline échoué — trace : ${params.outdir}/pipeline_info/trace.txt"
-    }
-
-} // fin du workflow
+         
+  
+   // fin du workflow
