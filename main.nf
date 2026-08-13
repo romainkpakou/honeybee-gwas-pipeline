@@ -124,7 +124,7 @@ workflow {
 
     log.info """
     ╔══════════════════════════════════════════════════════════════════╗
-    ║        honeybee-gwas-pipeline v${manifest.version}
+    ║        honeybee-gwas-pipeline v1.0.0
     ║   WGS & GWAS — Apis mellifera mellifera
     ╚══════════════════════════════════════════════════════════════════╝
       Samplesheet  : ${params.input}
