@@ -1,4 +1,3 @@
-nextflow.enable.dsl = 2
 
 /*
     MODULE : BWA-MEM2
@@ -28,7 +27,7 @@ process BWA_MEM2_INDEX {
 
     publishDir "${params.outdir}/02_alignment/index", mode: 'copy'
 
-    container 'quay.io/biocontainers/bwa-mem2:2.2.1--hd03093a_5'
+    container 'quay.io/biocontainers/mulled-v2-ac74a7f02cebcfcc07ce8a491b629aa1d907e125:a0ffedb52808e102887f6f7272d6069923d8a7be-0'
 
     input:
     path genome
@@ -65,7 +64,7 @@ process BWA_MEM2_ALIGN {
 
     publishDir "${params.outdir}/02_alignment/bam", mode: 'copy'
 
-    container 'quay.io/biocontainers/bwa-mem2:2.2.1--hd03093a_5'
+    container 'quay.io/biocontainers/mulled-v2-ac74a7f02cebcfcc07ce8a491b629aa1d907e125:a0ffedb52808e102887f6f7272d6069923d8a7be-0'
 
     input:
     tuple val(meta), path(reads)
