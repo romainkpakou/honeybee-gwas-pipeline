@@ -1,23 +1,11 @@
 /*
     MODULE : GWAS Report
     Outil   : R Markdown + knitr
-    Rôle    : Génération du rapport scientifique complet HTML/PDF
+    Rôle    : Génération du rapport scientifique HTML/PDF
     Docker  : quay.io/biocontainers/r-base:4.3.3
 
-    CONTENU DU RAPPORT :
-    1. Résumé du pipeline (paramètres, versions des outils)
-    2. Statistiques QC des reads (depuis MultiQC)
-    3. Statistiques d'alignement (flagstat)
-    4. Statistiques du VCF (Ts/Tv, nombre de SNPs, MAF spectrum)
-    5. Structure de population (PCA + Admixture)
-    6. Déclin du LD
-    7. Différenciation FST
-    8. Résultats GWAS (Manhattan plot + QQ plot + table des top SNPs)
-    9. Versions de tous les outils utilisés
-
-    FORMAT :
-    HTML  : rapport interactif avec table des matières flottante
-    PDF   : version imprimable pour soumission/archivage
+    NOTE : manifest.version n'est pas accessible dans les modules.
+    On passe la version via une variable shell depuis main.nf.
 */
 
 process GWAS_REPORT {
@@ -33,27 +21,40 @@ process GWAS_REPORT {
 
     output:
     path "gwas_report.html", emit: html
-    path "gwas_report.pdf",  emit: pdf,    optional: true
+    path "gwas_report.pdf",  emit: pdf,  optional: true
     path "versions.yml",     emit: versions
 
     script:
+    // Passer les params Nextflow comme variables d'environnement
+    // pour les rendre accessibles dans le code R
+    def maf_val   = params.maf
+    def gwas_mod  = params.gwas_model
     """
+    export PIPELINE_VERSION="1.0.0"
+    export RUN_DATE=\$(date '+%Y-%m-%d %H:%M')
+    export MAF_THRESHOLD="${maf_val}"
+    export GWAS_MODEL="${gwas_mod}"
+    export RESULTS_DIR="."
+
     # Installer les packages R nécessaires
     Rscript -e "
-    pkgs <- c('rmarkdown','knitr','ggplot2','dplyr','tidyr',
-              'kableExtra','DT','plotly')
+    pkgs <- c('rmarkdown','knitr','ggplot2','dplyr','tidyr','kableExtra')
     missing <- pkgs[!sapply(pkgs, requireNamespace, quietly=TRUE)]
     if (length(missing) > 0)
-        install.packages(missing,
-                         repos='https://cran.r-project.org',
-                         quiet=TRUE)
+        install.packages(missing, repos='https://cran.r-project.org', quiet=TRUE)
     "
 
-    # Copier le template R Markdown depuis le projet
+    # Copier le template R Markdown
     cp ${projectDir}/report/gwas_report.Rmd .
 
     # Rendre le rapport HTML
-    Rscript -e "
+    Rscript - << 'REOF'
+    pipeline_version <- Sys.getenv("PIPELINE_VERSION", "1.0.0")
+    run_date         <- Sys.getenv("RUN_DATE")
+    maf_threshold    <- as.numeric(Sys.getenv("MAF_THRESHOLD", "0.05"))
+    gwas_model       <- Sys.getenv("GWAS_MODEL", "lmm")
+    results_dir      <- Sys.getenv("RESULTS_DIR", ".")
+
     rmarkdown::render(
         'gwas_report.Rmd',
         output_format = rmarkdown::html_document(
@@ -63,33 +64,29 @@ process GWAS_REPORT {
             code_folding   = 'hide',
             theme          = 'flatly',
             highlight      = 'tango',
-            self_contained = TRUE,
-            fig_width      = 10,
-            fig_height     = 6
+            self_contained = TRUE
         ),
         output_file = 'gwas_report.html',
         params = list(
-            pipeline_version = '${manifest.version}',
-            run_date         = format(Sys.time(), '%Y-%m-%d %H:%M'),
-            results_dir      = '.',
-            n_samples        = '${params.input}',
-            maf_threshold    = ${params.maf},
-            gwas_model       = '${params.gwas_model}'
+            pipeline_version = pipeline_version,
+            run_date         = run_date,
+            results_dir      = results_dir,
+            maf_threshold    = maf_threshold,
+            gwas_model       = gwas_model
         )
     )
-    "
+    cat("Rapport HTML genere : gwas_report.html\\n")
+REOF
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         r-base: \$(R --version | head -1 | awk '{print \$3}')
         rmarkdown: \$(Rscript -e "cat(as.character(packageVersion('rmarkdown')))")
-        knitr: \$(Rscript -e "cat(as.character(packageVersion('knitr')))")
     END_VERSIONS
     """
 
     stub:
     """
-    touch gwas_report.html gwas_report.pdf
-    touch versions.yml
+    touch gwas_report.html gwas_report.pdf versions.yml
     """
 }
