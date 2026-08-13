@@ -174,8 +174,8 @@ workflow {
 
     // collect() attend que TOUS les échantillons soient traités
     // avant de lancer MultiQC (qui a besoin de tous les rapports)
-    ch_qc_reports = FASTQC.out.zip
-        .mix(FASTP.out.json)
+    ch_qc_reports = FASTQC.out.zip.map { it[1] }
+        .mix(FASTP.out.json.map { it[1] })
         .collect()
     MULTIQC_QC(ch_qc_reports, 'qc')
 
