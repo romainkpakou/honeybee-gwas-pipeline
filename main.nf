@@ -82,8 +82,9 @@ def parseSamplesheet(csv) {
         }
 }
 
-// ── Validation des paramètres obligatoires ────────────────────────────────────
+// ── Fonction : validation des paramètres obligatoires ─────────────────────────
 // Vérifie que les fichiers requis existent avant de démarrer
+// En DSL2, les fonctions peuvent être définies en dehors du workflow
 def validateParams() {
     if (!params.input) {
         error "ERREUR : --input est obligatoire. Exemple : --input samplesheet.csv"
@@ -99,27 +100,29 @@ def validateParams() {
     }
 }
 
-// ── Message de démarrage ──────────────────────────────────────────────────────
-log.info """
-╔══════════════════════════════════════════════════════════════════╗
-║        honeybee-gwas-pipeline v${manifest.version}
-║   WGS & GWAS — Apis mellifera mellifera
-╚══════════════════════════════════════════════════════════════════╝
-  Samplesheet  : ${params.input}
-  Génome       : ${params.genome}
-  Phénotypes   : ${params.phenotype_file ?: 'non fourni — GWAS ignoré'}
-  Sortie       : ${params.outdir}
-  Modèle GWAS  : ${params.gwas_model}
-  MAF          : ${params.maf}
-  ADMIXTURE K  : ${params.admixture_k}
-  Profil       : ${workflow.profile}
-""".stripIndent()
-
 // ── Workflow principal ────────────────────────────────────────────────────────
+// En DSL2, TOUT le code exécutable doit être dans un bloc workflow,
+// process ou function. Jamais au niveau global du script.
 workflow {
 
-    // Validation des paramètres
+    // Validation des paramètres obligatoires
     validateParams()
+
+    // Message de démarrage — dans le workflow car DSL2 l'exige
+    log.info """
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║        honeybee-gwas-pipeline v${manifest.version}
+    ║   WGS & GWAS — Apis mellifera mellifera
+    ╚══════════════════════════════════════════════════════════════════╝
+      Samplesheet  : ${params.input}
+      Génome       : ${params.genome}
+      Phénotypes   : ${params.phenotype_file ?: 'non fourni — GWAS ignoré'}
+      Sortie       : ${params.outdir}
+      Modèle GWAS  : ${params.gwas_model}
+      MAF          : ${params.maf}
+      ADMIXTURE K  : ${params.admixture_k}
+      Profil       : ${workflow.profile}
+    """.stripIndent()
 
     // ── Canaux d'entrée ───────────────────────────────────────────────────────
     // Canal des reads : un élément par échantillon
@@ -141,9 +144,9 @@ workflow {
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 1 — Contrôle qualité des reads
-    // FastQC analyse la qualité brute
+    // FastQC analyse la qualité brute des reads
     // fastp filtre les adaptateurs et les reads de mauvaise qualité
-    // MultiQC agrège tous les rapports en un seul HTML
+    // MultiQC agrège tous les rapports QC en un seul HTML interactif
     // ─────────────────────────────────────────────────────────────────────────
     FASTQC(ch_reads)
     FASTP(ch_reads)
@@ -153,16 +156,16 @@ workflow {
         .collect()
     MULTIQC_QC(ch_qc_reports, 'qc')
 
-    // Reads filtrés → alignement
+    // Reads filtrés → étape alignement
     ch_trimmed = FASTP.out.reads
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 2 — Alignement sur le génome de référence Amel_HAv3.1
-    // BWA-MEM2_INDEX : indexe le génome une seule fois
-    // BWA-MEM2_ALIGN : aligne les reads de chaque échantillon
-    // SAMTOOLS_SORT  : trie le BAM par coordonnées (requis par GATK)
-    // SAMTOOLS_INDEX : crée l'index .bai pour accès rapide
-    // SAMTOOLS_FLAGSTAT : statistiques d'alignement
+    // BWA_MEM2_INDEX : indexe le génome une seule fois pour tous les échantillons
+    // BWA_MEM2_ALIGN : aligne les reads de chaque échantillon en parallèle
+    // SAMTOOLS_SORT  : trie le BAM par coordonnées génomiques (requis par GATK)
+    // SAMTOOLS_INDEX : crée l'index .bai pour accès rapide aux régions
+    // SAMTOOLS_FLAGSTAT : calcule les statistiques d'alignement
     // ─────────────────────────────────────────────────────────────────────────
     BWA_MEM2_INDEX(ch_genome)
     BWA_MEM2_ALIGN(ch_trimmed, BWA_MEM2_INDEX.out.index)
@@ -173,26 +176,28 @@ workflow {
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 3 — Traitement du BAM
     // Picard MarkDuplicates identifie les duplicats PCR
-    // Les duplicats sont marqués (pas supprimés) — GATK les ignore
+    // Les duplicats sont marqués (REMOVE_DUPLICATES=false)
+    // GATK les ignore automatiquement lors du variant calling
     // ─────────────────────────────────────────────────────────────────────────
     PICARD_MARKDUPLICATES(SAMTOOLS_SORT.out.bam)
 
-    // BAM dédupliqué + index → GATK
+    // BAM dédupliqué + index réunis pour GATK HaplotypeCaller
     ch_dedup_bam = PICARD_MARKDUPLICATES.out.bam
         .join(PICARD_MARKDUPLICATES.out.bai)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 4 — Variant calling individuel (GVCF mode)
+    // ÉTAPE 4 — Variant calling individuel (mode GVCF)
     // HaplotypeCaller produit un GVCF par échantillon
     // Le GVCF contient la confiance de génotypage à chaque position
+    // du génome — pas seulement aux variants détectés
     // ─────────────────────────────────────────────────────────────────────────
     GATK_HAPLOTYPECALLER(ch_dedup_bam, ch_genome)
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 5 — Génotypage joint de tous les échantillons
-    // GenomicsDBImport consolide tous les GVCFs
+    // GenomicsDBImport consolide tous les GVCFs en une base de données
     // GenotypeGVCFs produit le VCF multi-échantillons final
-    // Le génotypage joint est plus puissant qu'un génotypage individuel
+    // Le génotypage joint exploite l'info de toute la cohorte
     // ─────────────────────────────────────────────────────────────────────────
     ch_all_gvcfs = GATK_HAPLOTYPECALLER.out.gvcf
         .mix(GATK_HAPLOTYPECALLER.out.tbi)
@@ -203,9 +208,9 @@ workflow {
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 6 — Filtrage des variants
-    // VariantFiltration applique les filtres GATK Best Practices
-    // bcftools garde uniquement les variants PASS bialléliques (SNPs)
-    // bcftools stats calcule Ts/Tv, nombre de SNPs, MAF spectrum
+    // VariantFiltration applique les filtres GATK Best Practices (hard-filter)
+    // bcftools_filter garde uniquement les variants PASS bialléliques SNPs
+    // bcftools_stats calcule Ts/Tv, nombre de SNPs, distribution MAF
     // ─────────────────────────────────────────────────────────────────────────
     GATK_VARIANTFILTRATION(GATK_GENOTYPEGVCFS.out.vcf, ch_genome)
     BCFTOOLS_FILTER(GATK_VARIANTFILTRATION.out.vcf)
@@ -215,16 +220,18 @@ workflow {
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 7 — Annotation fonctionnelle des variants
     // SnpEff prédit l'effet de chaque SNP sur les gènes d'Apis mellifera
-    // (missense, synonyme, stop_gained, intronique, intergénique...)
+    // Base de données Apis_mellifera construite sur Amel_HAv3.1
     // ─────────────────────────────────────────────────────────────────────────
     SNPEFF_ANNOTATE(ch_filtered_vcf)
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 8 — Génétique des populations
-    // PLINK2_QC  : filtres MAF, geno, mind, HWE + élagage LD
-    // PLINK2_PCA : analyse en composantes principales
-    // ADMIXTURE  : structure de population (K=2..5 en parallèle)
-    // vcftools   : FST entre populations, déclin LD, diversité π
+    // PLINK2_QC      : filtres MAF/geno/mind/HWE + élagage LD
+    // PLINK2_PCA     : analyse en composantes principales
+    // ADMIXTURE_RUN  : structure de population K=2..5 en parallèle
+    // VCFTOOLS_FST   : différenciation génétique entre populations
+    // VCFTOOLS_LD    : déclin du déséquilibre de liaison
+    // VCFTOOLS_PI    : diversité nucléotidique π
     // ─────────────────────────────────────────────────────────────────────────
     PLINK2_QC(ch_filtered_vcf)
     ch_plink = PLINK2_QC.out.plink_files
@@ -236,11 +243,11 @@ workflow {
     VCFTOOLS_PI(ch_filtered_vcf)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 9 — GWAS (si fichier phénotype fourni)
-    // GEMMA_KINSHIP : matrice de parenté génomique (N×N)
+    // ÉTAPE 9 — GWAS (uniquement si fichier phénotype fourni)
+    // GEMMA_KINSHIP : calcule la matrice de parenté génomique N×N
     // GEMMA_LMM     : GWAS par modèle mixte linéaire
     //                 Corrige la stratification via la matrice de parenté
-    // PLINK2_GWAS   : GWAS complémentaire (linéaire/logistique)
+    // PLINK2_GWAS   : association complémentaire linéaire/logistique
     // ─────────────────────────────────────────────────────────────────────────
     if (params.phenotype_file) {
         GEMMA_KINSHIP(ch_plink)
@@ -252,18 +259,18 @@ workflow {
         ch_gwas_results = GEMMA_LMM.out.annotated
         PLINK2_GWAS(ch_plink, ch_pheno)
     } else {
-        log.warn "Pas de fichier phénotype — étapes GWAS ignorées."
+        log.warn "Pas de fichier phénotype fourni — étapes GWAS ignorées."
         ch_gwas_results = Channel.empty()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 10 — Visualisation (figures publication-ready)
-    // PCA plot       : structure de population (PC1 vs PC2/PC3)
-    // Admixture plot : barplot proportions d'ascendance (K=2..5)
-    // LD decay plot  : courbe de déclin du LD
-    // FST plot       : différenciation génétique par fenêtres
-    // Manhattan plot : résultats GWAS (si phénotype fourni)
-    // QQ plot        : contrôle inflation génomique (lambda GC)
+    // PLOT_PCA       : structure de population (PC1 vs PC2/PC3)
+    // PLOT_ADMIXTURE : barplot proportions d'ascendance (K=2..5)
+    // PLOT_LD_DECAY  : courbe de déclin du LD
+    // PLOT_FST       : différenciation génétique par fenêtres chromosomiques
+    // PLOT_MANHATTAN : résultats GWAS — seulement si phénotype fourni
+    // PLOT_QQ        : contrôle inflation génomique (lambda GC)
     // ─────────────────────────────────────────────────────────────────────────
     PLOT_PCA(
         PLINK2_PCA.out.eigenvec,
@@ -283,8 +290,8 @@ workflow {
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 11 — Rapport scientifique final
-    // Collecte tous les résultats et génère un rapport HTML/PDF
-    // via R Markdown avec table des matières interactive
+    // Collecte tous les résultats intermédiaires
+    // Génère un rapport HTML/PDF complet via R Markdown
     // ─────────────────────────────────────────────────────────────────────────
     ch_report_inputs = BCFTOOLS_STATS.out.stats
         .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta, f -> f })
@@ -301,7 +308,7 @@ workflow {
 
     GWAS_REPORT(ch_report_inputs.collect())
 
-    // MultiQC final — agrège les stats d'alignement et de variants
+    // MultiQC final — agrège stats alignement, déduplication et variants
     ch_final_multiqc = BCFTOOLS_STATS.out.stats
         .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta, f -> f })
         .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta, f -> f })
@@ -309,7 +316,9 @@ workflow {
     MULTIQC_FINAL(ch_final_multiqc, 'final')
 }
 
-// ── Message de fin ────────────────────────────────────────────────────────────
+// ── Messages de fin ───────────────────────────────────────────────────────────
+// workflow.onComplete et workflow.onError sont des handlers spéciaux
+// qui peuvent être définis en dehors du bloc workflow
 workflow.onComplete {
     def status = workflow.success ? "SUCCÈS" : "ÉCHEC"
     log.info """
