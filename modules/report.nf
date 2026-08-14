@@ -1,4 +1,3 @@
-nextflow.enable.dsl = 2
 
 /*
     MODULE : GWAS Report
@@ -38,13 +37,18 @@ process GWAS_REPORT {
     export GWAS_MODEL="${gwas_mod}"
     export RESULTS_DIR="."
 
-    # Installer les packages R nécessaires
+    # Installer les packages R dans un répertoire local accessible en écriture
+    mkdir -p /tmp/Rlibs
     Rscript -e "
+    lib_path <- '/tmp/Rlibs'
+    .libPaths(c(lib_path, .libPaths()))
     pkgs <- c('rmarkdown','knitr','ggplot2','dplyr','tidyr','kableExtra')
     missing <- pkgs[!sapply(pkgs, requireNamespace, quietly=TRUE)]
     if (length(missing) > 0)
-        install.packages(missing, repos='https://cran.r-project.org', quiet=TRUE)
+        install.packages(missing, repos='https://cran.r-project.org',
+                         lib=lib_path, quiet=TRUE)
     "
+    export R_LIBS_USER=/tmp/Rlibs
 
     # Copier le template R Markdown
     cp ${projectDir}/report/gwas_report.Rmd .
