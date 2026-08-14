@@ -60,7 +60,9 @@ process GATK_HAPLOTYPECALLER {
     fi
 
     # Créer le dictionnaire si nécessaire
-    if [ ! -f \${genome%.fa}.dict ] && [ ! -f \${genome%.fasta}.dict ]; then
+    # Extraire le nom de base du génome pour éviter la variable shell non définie
+    GENOME_BASE=\$(basename ${genome})
+    if [ ! -f "\${GENOME_BASE%.fa}.dict" ] && [ ! -f "\${GENOME_BASE%.fasta}.dict" ]; then
         gatk CreateSequenceDictionary -R ${genome}
     fi
 
