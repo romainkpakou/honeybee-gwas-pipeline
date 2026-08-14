@@ -72,8 +72,6 @@ process PLINK2_QC {
         --maf ${params.maf} \\
         --geno ${params.geno} \\
         --mind ${params.mind} \\
-        --hwe ${params.hwe} midp \\
-        --autosome \\
         --make-bed \\
         --out honeybee.qc \\
         --threads ${task.cpus} \\
