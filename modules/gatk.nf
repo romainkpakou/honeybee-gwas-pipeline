@@ -68,7 +68,7 @@ process GATK_HAPLOTYPECALLER {
 
     mkdir -p tmp
 
-    gatk ${params.gatk_java} HaplotypeCaller \\
+    gatk --java-options "${params.gatk_java}" HaplotypeCaller \\
         -R ${genome} \\
         -I ${bam} \\
         -O ${meta.id}.g.vcf.gz \\
@@ -122,7 +122,7 @@ process GATK_GENOMICSDBIMPORT {
 
     mkdir -p tmp
 
-    gatk ${params.gatk_java} GenomicsDBImport \\
+    gatk --java-options "${params.gatk_java}" GenomicsDBImport \\
         ${vcf_args} \\
         --genomicsdb-workspace-path genomicsdb \\
         -L chromosomes.list \\
@@ -164,7 +164,7 @@ process GATK_GENOTYPEGVCFS {
     """
     mkdir -p tmp
 
-    gatk ${params.gatk_java} GenotypeGVCFs \\
+    gatk --java-options "${params.gatk_java}" GenotypeGVCFs \\
         -R ${genome} \\
         -V gendb://${db} \\
         -O cohort.vcf.gz \\
@@ -206,14 +206,14 @@ process GATK_VARIANTFILTRATION {
     mkdir -p tmp
 
     # Extraire uniquement les SNPs
-    gatk ${params.gatk_java} SelectVariants \\
+    gatk --java-options "${params.gatk_java}" SelectVariants \\
         -R ${genome} \\
         -V ${vcf} \\
         --select-type-to-include SNP \\
         -O snps_only.vcf.gz
 
     # Appliquer les filtres hard-filter GATK Best Practices
-    gatk ${params.gatk_java} VariantFiltration \\
+    gatk --java-options "${params.gatk_java}" VariantFiltration \\
         -R ${genome} \\
         -V snps_only.vcf.gz \\
         --filter-expression "QD < ${params.snp_qd}" \\
