@@ -85,6 +85,7 @@ process PLINK2_QC {
     plink2 \\
         --bfile honeybee.qc \\
         --allow-extra-chr \\
+        --bad-ld \\
         --indep-pairwise ${params.ld_window} ${params.ld_step} ${params.ld_r2} \\
         --out honeybee.ldprune \\
         --threads ${task.cpus}
