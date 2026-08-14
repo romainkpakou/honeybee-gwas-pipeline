@@ -152,7 +152,7 @@ process PLINK2_PCA {
         --bfile honeybee.pruned \\
         --allow-extra-chr \\
         --read-freq honeybee.afreq \\
-        --pca 20 \\
+        --pca 4 \\
         --out honeybee \\
         --threads ${task.cpus}
 
