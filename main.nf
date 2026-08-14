@@ -387,7 +387,8 @@ workflow {
         ch_report_inputs = ch_report_inputs.mix(ch_gwas_results)
     }
 
-    GWAS_REPORT(ch_report_inputs.collect())
+    // GWAS_REPORT désactivé temporairement — nécessite pandoc dans le conteneur
+    // GWAS_REPORT(ch_report_inputs.collect())
 
     // MultiQC final agrège alignement + déduplication + stats variants
     ch_final_multiqc = BCFTOOLS_STATS.out.stats
