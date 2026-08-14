@@ -240,8 +240,8 @@ workflow {
     //   toute la cohorte pour appeler les variants rares et corriger
     //   les erreurs de génotypage individuels
     // ─────────────────────────────────────────────────────────────────────────
-    ch_all_gvcfs = GATK_HAPLOTYPECALLER.out.gvcf
-        .mix(GATK_HAPLOTYPECALLER.out.tbi)
+    ch_all_gvcfs = GATK_HAPLOTYPECALLER.out.gvcf.map { it[1] }
+        .mix(GATK_HAPLOTYPECALLER.out.tbi.map { it[1] })
         .collect()
 
     GATK_GENOMICSDBIMPORT(ch_all_gvcfs, ch_genome)
