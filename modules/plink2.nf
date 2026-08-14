@@ -140,9 +140,18 @@ process PLINK2_PCA {
 
     script:
     """
+    # Calculer les fréquences alléliques d'abord (requis avec < 50 échantillons)
     plink2 \\
         --bfile honeybee.pruned \\
         --allow-extra-chr \\
+        --freq \\
+        --out honeybee \\
+        --threads ${task.cpus}
+
+    plink2 \\
+        --bfile honeybee.pruned \\
+        --allow-extra-chr \\
+        --read-freq honeybee.afreq \\
         --pca 20 \\
         --out honeybee \\
         --threads ${task.cpus}
