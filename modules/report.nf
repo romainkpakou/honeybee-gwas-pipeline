@@ -55,6 +55,8 @@ process GWAS_REPORT {
 
     # Rendre le rapport HTML
     Rscript - << 'REOF'
+    # Charger les packages depuis le répertoire local
+    .libPaths(c('/tmp/Rlibs', .libPaths()))
     pipeline_version <- Sys.getenv("PIPELINE_VERSION", "1.0.0")
     run_date         <- Sys.getenv("RUN_DATE")
     maf_threshold    <- as.numeric(Sys.getenv("MAF_THRESHOLD", "0.05"))
