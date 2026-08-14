@@ -46,6 +46,8 @@ process GATK_HAPLOTYPECALLER {
     input:
     tuple val(meta), path(bam), path(bai)
     path genome
+    path genome_fai
+    path genome_dict
 
     output:
     tuple val(meta), path("${meta.id}.g.vcf.gz"),     emit: gvcf
@@ -155,6 +157,8 @@ process GATK_GENOTYPEGVCFS {
     input:
     path db
     path genome
+    path genome_fai
+    path genome_dict
 
     output:
     tuple path("cohort.vcf.gz"), path("cohort.vcf.gz.tbi"), emit: vcf
@@ -195,6 +199,8 @@ process GATK_VARIANTFILTRATION {
     input:
     tuple path(vcf), path(tbi)
     path genome
+    path genome_fai
+    path genome_dict
 
     output:
     tuple path("cohort.filtered.vcf.gz"),
@@ -239,6 +245,38 @@ process GATK_VARIANTFILTRATION {
     stub:
     """
     touch cohort.filtered.vcf.gz cohort.filtered.vcf.gz.tbi
+    touch versions.yml
+    """
+}
+
+process GATK_DICT {
+    tag "genome_dict"
+    label 'process_low'
+
+    publishDir "${params.outdir}/02_alignment/index", mode: 'copy'
+
+    container 'broadinstitute/gatk:4.5.0.0'
+
+    input:
+    path genome
+
+    output:
+    path "*.dict", emit: dict
+    path "versions.yml", emit: versions
+
+    script:
+    """
+    gatk CreateSequenceDictionary -R ${genome}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        gatk: \$(gatk --version | head -1 | sed 's/The Genome Analysis Toolkit (GATK) v//')
+    END_VERSIONS
+    """
+
+    stub:
+    """
+    touch genome.dict
     touch versions.yml
     """
 }

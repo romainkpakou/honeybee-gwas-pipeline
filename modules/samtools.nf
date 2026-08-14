@@ -1,4 +1,3 @@
-nextflow.enable.dsl = 2
 
 /*
     MODULE : SAMtools
@@ -129,6 +128,38 @@ process SAMTOOLS_FLAGSTAT {
     stub:
     """
     touch ${meta.id}.flagstat
+    touch versions.yml
+    """
+}
+
+process SAMTOOLS_FAIDX {
+    tag "genome_index"
+    label 'process_low'
+
+    publishDir "${params.outdir}/02_alignment/index", mode: 'copy'
+
+    container 'quay.io/biocontainers/samtools:1.19.2--h50ea8bc_1'
+
+    input:
+    path genome
+
+    output:
+    path "${genome}.fai", emit: fai
+    path "versions.yml",  emit: versions
+
+    script:
+    """
+    samtools faidx ${genome}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        samtools: \$(samtools --version | head -1 | sed 's/samtools //')
+    END_VERSIONS
+    """
+
+    stub:
+    """
+    touch ${genome}.fai
     touch versions.yml
     """
 }

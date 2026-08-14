@@ -49,6 +49,8 @@ include { SAMTOOLS_INDEX           } from './modules/samtools'
 include { SAMTOOLS_FLAGSTAT        } from './modules/samtools'
 include { PICARD_MARKDUPLICATES    } from './modules/picard'
 include { GATK_HAPLOTYPECALLER     } from './modules/gatk'
+include { GATK_DICT                } from './modules/gatk'
+include { SAMTOOLS_FAIDX           } from './modules/samtools'
 include { GATK_GENOMICSDBIMPORT    } from './modules/gatk'
 include { GATK_GENOTYPEGVCFS       } from './modules/gatk'
 include { GATK_VARIANTFILTRATION   } from './modules/gatk'
@@ -145,6 +147,12 @@ workflow {
     // Canal du génome : valeur unique partagée par tous les process
     ch_genome = Channel.value(file(params.genome))
 
+    // Indexer le génome pour GATK (fai + dict requis)
+    SAMTOOLS_FAIDX(ch_genome)
+    GATK_DICT(ch_genome)
+    ch_fai  = SAMTOOLS_FAIDX.out.fai
+    ch_dict = GATK_DICT.out.dict
+
     // Canal des phénotypes : vide si pas fourni → GWAS ignoré automatiquement
     ch_pheno = params.phenotype_file
         ? Channel.value(file(params.phenotype_file))
@@ -228,7 +236,7 @@ workflow {
     //   pas seulement aux positions variantes.
     //   Indispensable pour le génotypage joint de l'étape suivante.
     // ─────────────────────────────────────────────────────────────────────────
-    GATK_HAPLOTYPECALLER(ch_dedup_bam, ch_genome)
+    GATK_HAPLOTYPECALLER(ch_dedup_bam, ch_genome, ch_fai, ch_dict)
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 5 — Génotypage joint de tous les échantillons
@@ -245,7 +253,7 @@ workflow {
         .collect()
 
     GATK_GENOMICSDBIMPORT(ch_all_gvcfs, ch_genome)
-    GATK_GENOTYPEGVCFS(GATK_GENOMICSDBIMPORT.out.db, ch_genome)
+    GATK_GENOTYPEGVCFS(GATK_GENOMICSDBIMPORT.out.db, ch_genome, ch_fai, ch_dict)
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 6 — Filtrage des variants
@@ -257,7 +265,7 @@ workflow {
     // BCFTOOLS_STATS         : calcule Ts/Tv, nb SNPs, distribution MAF
     //   Ts/Tv attendu ~2.0 pour un génome de bonne qualité
     // ─────────────────────────────────────────────────────────────────────────
-    GATK_VARIANTFILTRATION(GATK_GENOTYPEGVCFS.out.vcf, ch_genome)
+    GATK_VARIANTFILTRATION(GATK_GENOTYPEGVCFS.out.vcf, ch_genome, ch_fai, ch_dict)
     BCFTOOLS_FILTER(GATK_VARIANTFILTRATION.out.vcf)
     BCFTOOLS_STATS(BCFTOOLS_FILTER.out.vcf)
     ch_filtered_vcf = BCFTOOLS_FILTER.out.vcf
