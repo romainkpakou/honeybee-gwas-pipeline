@@ -1,4 +1,3 @@
-nextflow.enable.dsl = 2
 
 /*
     MODULE : r_plots
@@ -28,7 +27,7 @@ process PLOT_MANHATTAN {
 
     publishDir "${params.outdir}/05_gwas/plots", mode: 'copy'
 
-    container 'quay.io/biocontainers/r-base:4.3.3'
+    container 'rocker/tidyverse:4.3.1'
 
     input:
     path gwas_results
@@ -136,7 +135,7 @@ process PLOT_QQ {
 
     publishDir "${params.outdir}/05_gwas/plots", mode: 'copy'
 
-    container 'quay.io/biocontainers/r-base:4.3.3'
+    container 'rocker/tidyverse:4.3.1'
 
     input:
     path gwas_results
@@ -219,7 +218,7 @@ process PLOT_PCA {
 
     publishDir "${params.outdir}/04_population/plots", mode: 'copy'
 
-    container 'quay.io/biocontainers/r-base:4.3.3'
+    container 'rocker/tidyverse:4.3.1'
 
     input:
     path eigenvec
@@ -295,7 +294,7 @@ process PLOT_ADMIXTURE {
 
     publishDir "${params.outdir}/04_population/plots", mode: 'copy'
 
-    container 'quay.io/biocontainers/r-base:4.3.3'
+    container 'rocker/tidyverse:4.3.1'
 
     input:
     path q_files
@@ -397,7 +396,7 @@ process PLOT_LD_DECAY {
 
     publishDir "${params.outdir}/04_population/plots", mode: 'copy'
 
-    container 'quay.io/biocontainers/r-base:4.3.3'
+    container 'rocker/tidyverse:4.3.1'
 
     input:
     path ld_file
@@ -476,7 +475,7 @@ process PLOT_FST {
 
     publishDir "${params.outdir}/04_population/plots", mode: 'copy'
 
-    container 'quay.io/biocontainers/r-base:4.3.3'
+    container 'rocker/tidyverse:4.3.1'
 
     input:
     path fst_file

@@ -56,7 +56,7 @@ include { GATK_GENOTYPEGVCFS       } from './modules/gatk'
 include { GATK_VARIANTFILTRATION   } from './modules/gatk'
 include { BCFTOOLS_FILTER          } from './modules/bcftools'
 include { BCFTOOLS_STATS           } from './modules/bcftools'
-include { SNPEFF_ANNOTATE          } from './modules/snpeff'
+// include { SNPEFF_ANNOTATE          } from './modules/snpeff'
 include { PLINK2_QC                } from './modules/plink2'
 include { PLINK2_PCA               } from './modules/plink2'
 include { PLINK2_GWAS              } from './modules/plink2'
@@ -279,7 +279,8 @@ workflow {
     //   missense_variant, synonymous_variant, stop_gained, intron_variant...
     //   Impact : HIGH, MODERATE, LOW, MODIFIER
     // ─────────────────────────────────────────────────────────────────────────
-    SNPEFF_ANNOTATE(ch_filtered_vcf)
+    // SNPEFF_ANNOTATE désactivé — nécessite accès internet
+    // SNPEFF_ANNOTATE(ch_filtered_vcf)
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 8 — Génétique des populations
