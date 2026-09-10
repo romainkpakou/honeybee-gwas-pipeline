@@ -25,28 +25,25 @@ implémente des méthodes modernes de génomique des populations.
 
 ## Étapes du pipeline
 
-FASTQ bruts
-↓
-ÉTAPE 1 — QC FastQC · fastp · MultiQC
-↓
-ÉTAPE 2 — Alignement BWA-MEM2 · SAMtools
-↓
-ÉTAPE 3 — BAM Picard MarkDuplicates
-↓
-ÉTAPE 4-5 — Variants GATK HaplotypeCaller · GenomicsDBImport · GenotypeGVCFs
-↓
-ÉTAPE 6 — Filtrage GATK VariantFiltration · bcftools
-↓
-ÉTAPE 7 — Annotation SnpEff (base construite localement depuis le GFF3)
-↓
-ÉTAPE 8 — Pop. gen. PLINK2 · ADMIXTURE · vcftools (FST · LD · π)
-↓
-ÉTAPE 9 — GWAS GEMMA LMM · PLINK2
-↓
-ÉTAPE 10 — Figures Manhattan · QQ · PCA · Admixture · FST · LD decay
-↓
-ÉTAPE 11 — Rapport R Markdown HTML
+```mermaid
+flowchart TD
+    A[FASTQ bruts] --> B["1. QC<br/>FastQC · fastp · MultiQC"]
+    B --> C["2. Alignement<br/>BWA-MEM2 · SAMtools"]
+    C --> D["3. Déduplication<br/>Picard MarkDuplicates"]
+    D --> E["4–5. Variant calling<br/>GATK HaplotypeCaller · GenomicsDBImport · GenotypeGVCFs"]
+    E --> F["6. Filtrage<br/>GATK VariantFiltration · bcftools"]
+    F --> G["7. Annotation<br/>SnpEff (base construite depuis le GFF3)"]
+    F --> H["8. Génétique des populations<br/>PLINK2 · ADMIXTURE · vcftools (FST · LD · π)"]
+    H --> I["9. GWAS<br/>GEMMA LMM · PLINK2"]
+    H --> J["10. Figures<br/>Manhattan · QQ · PCA · Admixture · FST · LD"]
+    I --> J
+    G --> K["11. Rapport<br/>R Markdown HTML + MultiQC"]
+    J --> K
+    H --> K
+```
 
+Les étapes 7 (SnpEff) et 9 (GWAS) sont **conditionnelles** : SnpEff s'active si
+un GFF3 est fourni, le GWAS si des phénotypes sont fournis.
 
 ---
 
@@ -54,12 +51,13 @@ FASTQ bruts
 
 | Outil | Version | Installation |
 |---|---|---|
-| Nextflow | ≥ 23.04.0 | `curl -s https://get.nextflow.io \| bash` |
-| Docker | any | [docs.docker.com](https://docs.docker.com) |
-| Java | ≥ 11 | `sudo apt install default-jdk` |
+| Nextflow | ≥ 24.04 | `curl -s https://get.nextflow.io \| bash` |
+| Docker (ou Singularity) | — | [docs.docker.com](https://docs.docker.com) |
+| Java | ≥ 17 | `sudo apt install default-jdk` |
 
-Tous les outils bioinformatiques sont téléchargés automatiquement
-via Docker — aucune installation manuelle requise.
+Tous les outils bioinformatiques tournent dans des conteneurs
+`quay.io/biocontainers` / `rocker` téléchargés automatiquement — aucune
+installation manuelle. Reproductibilité : chaque conteneur est épinglé par tag.
 
 ---
 
@@ -82,12 +80,10 @@ nextflow run main.nf -profile test,docker -resume
 ### 3. Analyse réelle
 
 ```bash
-# 1. ajouter une colonne 'phenotype' au samplesheet.csv
+# 1. renseigner la colonne 'phenotype' du samplesheet.csv (trait mesuré)
 # 2. ajuster conf/params.yml (filtres QC de production, ressources)
-nextflow run main.nf -params-file conf/params.yml -profile docker -resume
-
-# Cluster HPC
-nextflow run main.nf -params-file conf/params.yml -profile slurm -resume
+nextflow run main.nf -params-file conf/params.yml -profile docker  -resume   # machine unique
+nextflow run main.nf -params-file conf/params.yml -profile slurm   -resume   # cluster HPC
 ```
 
 Guide détaillé : [`docs/running_a_real_cohort.md`](docs/running_a_real_cohort.md)
@@ -117,14 +113,16 @@ Alternative : `--phenotype_file` pointant vers un fichier `sample,valeur` ou
 
 ## Résultats
 
+```
 results/
-├── 01_qc/ FastQC, fastp, MultiQC
-├── 02_alignment/ BAM triés et dédupliqués
-├── 03_variants/ VCF filtré + VCF annoté SnpEff + rapport d'effets
-├── 04_population/ PCA, ADMIXTURE, FST, LD decay
-├── 05_gwas/ GEMMA LMM, PLINK2, Manhattan + QQ plots
-├── 06_report/ Rapport HTML complet (R Markdown)
-└── pipeline_info/ Nextflow report, timeline, trace, DAG
+├── 01_qc/          FastQC, fastp, MultiQC
+├── 02_alignment/   BAM triés et dédupliqués
+├── 03_variants/    VCF filtré + VCF annoté SnpEff (ANN=) + rapport d'effets
+├── 04_population/   PCA, ADMIXTURE (K=2..5), FST, LD decay, diversité π
+├── 05_gwas/         kinship, GEMMA LMM, PLINK2, Manhattan + QQ plots
+├── 06_report/       rapport HTML de synthèse (R Markdown)
+└── pipeline_info/   Nextflow report, timeline, trace, DAG
+```
 
 ---
 
@@ -156,14 +154,25 @@ Tous les paramètres sont modifiables dans `conf/params.yml`.
 | Ressource | Accession | Référence |
 |---|---|---|
 | Données WGS | PRJNA473480 | Wallberg et al. (2019) *Nat Ecol Evol* |
-| Génome référence | GCF_003254395.2 | Amel_HAv3.1 — 16 chromosomes |
-| Base SnpEff | Apis_mellifera | Cingolani et al. (2012) |
+| Génome référence | GCF_003254395.2 | Amel_HAv3.1 — 16 chromosomes + mito |
+| Annotation | NCBI Release 104 | GFF3, base SnpEff construite localement |
+
+---
+
+## Statut
+
+- **Pipeline** : fonctionnel de bout en bout, testé en CI (`nextflow lint` +
+  run `-stub` complet) et sur le jeu de démonstration (5 génomes, `-profile test`).
+- **Jeu de démonstration** : filtres QC volontairement relâchés — les résultats
+  GWAS/popgen sont un test technique, **pas une analyse biologique**.
+- **Analyse réelle** : suivre [`docs/running_a_real_cohort.md`](docs/running_a_real_cohort.md)
+  (≥ 20–30 génomes, phénotypes, paramètres de production).
 
 ---
 
 ## Citation
-Romain KPAKOU (2026). honeybee-gwas-pipeline: End-to-end WGS/GWAS pipeline
-for Apis mellifera mellifera population genomics. v1.0.0.
+Romain KPAKOU (2026). *honeybee-gwas-pipeline: End-to-end WGS/GWAS pipeline
+for* Apis mellifera mellifera *population genomics*. v1.0.0.
 https://github.com/romainkpakou/honeybee-gwas-pipeline
 
 ---
