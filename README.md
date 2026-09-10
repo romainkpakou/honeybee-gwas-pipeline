@@ -100,10 +100,21 @@ nextflow run main.nf -profile test,docker
 ## Format du samplesheet
 
 ```csv
-sample,fastq_1,fastq_2,sex,population
-AMM_FR_001,data/samples/SRR7190186_1.fastq.gz,data/samples/SRR7190186_2.fastq.gz,unknown,AMM
-AMM_UK_001,data/samples/SRR7190189_1.fastq.gz,data/samples/SRR7190189_2.fastq.gz,unknown,AMM
+sample,fastq_1,fastq_2,sex,population,phenotype
+AMM_FR_001,data/samples/SRR7190186_1.fastq.gz,data/samples/SRR7190186_2.fastq.gz,unknown,AMM,62.5
+AMM_UK_001,data/samples/SRR7190189_1.fastq.gz,data/samples/SRR7190189_2.fastq.gz,unknown,AMM,45.0
 ```
+
+La colonne **`phenotype`** est optionnelle :
+
+- **présente avec au moins une valeur** → l'étape GWAS (GEMMA LMM + PLINK2 +
+  Manhattan/QQ) est activée automatiquement ; valeur vide ou `NA` = individu
+  exclu de l'association.
+- **absente** (ou `--phenotype_file` non fourni) → le GWAS est ignoré, le reste
+  du pipeline s'exécute normalement.
+
+Alternative : `--phenotype_file` pointant vers un fichier `sample,valeur` ou
+`FID IID valeur`.
 
 ---
 
@@ -130,7 +141,8 @@ results/
 | `--hwe` | 1e-6 | Seuil Hardy-Weinberg |
 | `--ld_r2` | 0.2 | Seuil r² pour l'élagage LD |
 | `--admixture_k` | `2,3,4,5` | Valeurs de K à tester |
-| `--gwas_model` | `lmm` | Modèle GWAS : `lmm` (GEMMA) ou `linear` |
+| `--phenotype_file` | `null` | Fichier phénotypes (sinon colonne `phenotype` du samplesheet) |
+| `--gwas_model` | `lmm` | Modèle GWAS : `lmm` (GEMMA) ou `logistic` (trait binaire) |
 | `--gwas_pval` | 1e-6 | Seuil de significativité GWAS |
 
 Tous les paramètres sont modifiables dans `conf/params.yml`.

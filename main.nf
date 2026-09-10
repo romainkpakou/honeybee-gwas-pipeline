@@ -60,6 +60,7 @@ include { BCFTOOLS_STATS           } from './modules/bcftools'
 include { PLINK2_QC                } from './modules/plink2'
 include { PLINK2_PCA               } from './modules/plink2'
 include { PLINK2_GWAS              } from './modules/plink2'
+include { BUILD_PHENOTYPE          } from './modules/phenotype'
 include { ADMIXTURE_RUN            } from './modules/admixture'
 include { VCFTOOLS_FST             } from './modules/vcftools'
 include { VCFTOOLS_LD              } from './modules/vcftools'
@@ -100,6 +101,27 @@ def parseSamplesheet(csv) {
         }
 }
 
+// Détecte si des phénotypes sont disponibles pour le GWAS.
+// Deux sources possibles :
+//   1. --phenotype_file <fichier dédié>
+//   2. une colonne 'phenotype' dans le samplesheet avec >=1 valeur non vide
+// Lecture synchrone du CSV (exécutée dans le workflow, sur le nœud principal).
+def hasPhenotypes(csv) {
+    if (params.phenotype_file) return true
+    def f = file(csv)
+    if (!f.exists()) return false
+    def lines = f.readLines().findAll { it?.trim() }
+    if (lines.size() < 2) return false
+    def header = lines[0].split(',').collect { it.trim().toLowerCase() }
+    def idx = header.indexOf('phenotype')
+    if (idx < 0) return false
+    return lines.drop(1).any { row ->
+        def cols = row.split(',', -1)
+        idx < cols.size() &&
+            !(cols[idx].trim().toLowerCase() in ['', 'na', 'nan', '-9', 'none', 'null', '.'])
+    }
+}
+
 // Valide les paramètres obligatoires
 // Appelée DANS le workflow — pas au niveau global
 def validateParams() {
@@ -124,6 +146,9 @@ workflow {
     // En DSL2 v26, TOUT statement exécutable doit être ici
     validateParams()
 
+    // GWAS activé si un fichier phénotype OU une colonne 'phenotype' est fourni
+    run_gwas = hasPhenotypes(params.input)
+
     log.info """
     ╔══════════════════════════════════════════════════════════════════╗
     ║        honeybee-gwas-pipeline v1.0.0
@@ -131,7 +156,8 @@ workflow {
     ╚══════════════════════════════════════════════════════════════════╝
       Samplesheet  : ${params.input}
       Génome       : ${params.genome}
-      Phénotypes   : ${params.phenotype_file ?: 'non fourni — GWAS ignoré'}
+      Phénotypes   : ${params.phenotype_file ?: (run_gwas ? "colonne 'phenotype' du samplesheet" : 'non fourni — GWAS ignoré')}
+      GWAS         : ${run_gwas ? 'ACTIVÉ' : 'désactivé'}
       Sortie       : ${params.outdir}
       Modèle GWAS  : ${params.gwas_model}
       MAF          : ${params.maf}
@@ -153,10 +179,10 @@ workflow {
     ch_fai  = SAMTOOLS_FAIDX.out.fai
     ch_dict = GATK_DICT.out.dict
 
-    // Canal des phénotypes : vide si pas fourni → GWAS ignoré automatiquement
-    ch_pheno = params.phenotype_file
-        ? Channel.value(file(params.phenotype_file))
-        : Channel.empty()
+    // Canal de la source des phénotypes : fichier dédié si fourni, sinon le
+    // samplesheet lui-même (colonne 'phenotype'). BUILD_PHENOTYPE convertit
+    // cette source aux formats attendus par GEMMA et PLINK2.
+    ch_pheno_source = Channel.value(file(params.phenotype_file ?: params.input))
 
     // Canal des valeurs K pour ADMIXTURE
     // "2,3,4,5" → Channel émettant 2, 3, 4, 5 séquentiellement
@@ -298,7 +324,8 @@ workflow {
     // VCFTOOLS_PI   : diversité nucléotidique π par fenêtres de 50 kb
     // ─────────────────────────────────────────────────────────────────────────
     PLINK2_QC(ch_filtered_vcf)
-    ch_plink = PLINK2_QC.out.plink_files
+    ch_plink    = PLINK2_QC.out.plink_files   // SNPs élagués LD  → PCA, ADMIXTURE, kinship
+    ch_plink_qc = PLINK2_QC.out.qc_files      // SNPs QC non élagués → tests d'association
 
     PLINK2_PCA(ch_plink)
 
@@ -310,8 +337,10 @@ workflow {
     VCFTOOLS_PI(ch_filtered_vcf)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 9 — GWAS (uniquement si fichier phénotype fourni)
+    // ÉTAPE 9 — GWAS (si colonne 'phenotype' du samplesheet ou --phenotype_file)
     //
+    // BUILD_PHENOTYPE : convertit la source des phénotypes aux formats
+    //                 GEMMA (-p) et PLINK2 (--pheno), ordre du .fam respecté
     // GEMMA_KINSHIP : calcule la matrice de parenté centrée N×N
     //                 Capture la structure de population ET la parenté cryptique
     // GEMMA_LMM     : GWAS par modèle mixte linéaire (LMM)
@@ -321,18 +350,27 @@ workflow {
     // PLINK2_GWAS   : association linéaire/logistique complémentaire
     //                 Plus rapide, utile pour validation croisée
     // ─────────────────────────────────────────────────────────────────────────
-    if (params.phenotype_file) {
-        GEMMA_KINSHIP(ch_plink)
+    if (run_gwas) {
+        // Construit phenotype.gemma.txt + phenotype.plink.tsv alignés sur le .fam
+        BUILD_PHENOTYPE(ch_plink, ch_pheno_source)
+        ch_pheno_gemma = BUILD_PHENOTYPE.out.gemma
+        ch_pheno_plink = BUILD_PHENOTYPE.out.plink
+
+        // Kinship sur les SNPs élagués LD
+        GEMMA_KINSHIP(ch_plink, ch_pheno_gemma)
+        // LMM sur le jeu QC complet, corrigé par la kinship
         GEMMA_LMM(
-            ch_plink,
+            ch_plink_qc,
             GEMMA_KINSHIP.out.kinship,
-            ch_pheno
+            ch_pheno_gemma
         )
         // Le module GEMMA expose 'annotated' (résultats avec lambda GC)
         ch_gwas_results = GEMMA_LMM.out.annotated
-        PLINK2_GWAS(ch_plink, ch_pheno)
+
+        // Association PLINK2 complémentaire sur le même jeu QC
+        PLINK2_GWAS(ch_plink_qc, ch_pheno_plink)
     } else {
-        log.warn "Pas de fichier phénotype fourni — étapes GWAS ignorées."
+        log.warn "Aucun phénotype fourni (--phenotype_file ou colonne 'phenotype') — étapes GWAS ignorées."
         ch_gwas_results = Channel.empty()
     }
 
@@ -359,7 +397,7 @@ workflow {
     PLOT_LD_DECAY(VCFTOOLS_LD.out.ld)
     PLOT_FST(VCFTOOLS_FST.out.fst)
 
-    if (params.phenotype_file) {
+    if (run_gwas) {
         PLOT_MANHATTAN(ch_gwas_results)
         PLOT_QQ(ch_gwas_results)
     }
@@ -383,7 +421,7 @@ workflow {
         .mix(VCFTOOLS_FST.out.fst)
         .collect()
 
-    if (params.phenotype_file) {
+    if (run_gwas) {
         ch_report_inputs = ch_report_inputs.mix(ch_gwas_results)
     }
 

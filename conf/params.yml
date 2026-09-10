@@ -7,6 +7,10 @@
 input:          "samplesheet.csv"
 outdir:         "results"
 genome:         "data/reference/Amel_HAv3.1.fa"
+
+# Phénotypes GWAS — deux options (laisser phenotype_file à null pour l'option 1) :
+#   1. colonne 'phenotype' dans le samplesheet (activation automatique du GWAS)
+#   2. fichier dédié : "sample,valeur" ou "FID IID valeur"
 phenotype_file: null
 
 # QC reads
@@ -35,8 +39,8 @@ ld_step:     10
 ld_r2:       0.2
 admixture_k: "2,3"
 
-# GWAS — désactivé (pas de phénotypes)
-gwas_model: "lmm"
+# GWAS — activé via la colonne 'phenotype' du samplesheet
+gwas_model: "lmm"       # "lmm" (GEMMA) ; "logistic" pour un trait binaire
 gwas_pval:  1e-6
 
 # Ressources

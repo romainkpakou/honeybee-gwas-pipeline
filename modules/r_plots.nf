@@ -60,10 +60,16 @@ process PLOT_MANHATTAN {
 
     # Standardiser les noms de colonnes GEMMA → standard
     if ("p_wald" %in% names(df)) df\$P   <- df\$p_wald
-    if ("ps"     %in% names(df)) df\$BP  <- df\$ps
-    if ("chr"    %in% names(df)) df\$CHR <- as.integer(df\$chr)
+    if ("ps"     %in% names(df)) df\$BP  <- as.numeric(df\$ps)
 
-    df <- df[!is.na(df\$P) & df\$P > 0 & !is.na(df\$CHR), ]
+    # La colonne 'chr' de GEMMA peut être un accession NCBI (ex : NC_037638.1).
+    # On mappe chaque chromosome/contig distinct vers un entier séquentiel
+    # (ordre lexicographique) pour l'axe X du Manhattan.
+    chr_raw <- if ("chr" %in% names(df)) as.character(df\$chr) else as.character(df\$CHR)
+    chr_levels <- sort(unique(chr_raw))
+    df\$CHR <- match(chr_raw, chr_levels)
+
+    df <- df[!is.na(df\$P) & df\$P > 0 & !is.na(df\$CHR) & !is.na(df\$BP), ]
     df\$LOG10P <- -log10(df\$P)
 
     n_snps     <- nrow(df)

@@ -1,0 +1,6 @@
+sample,fastq_1,fastq_2,sex,population,phenotype
+AMM_FR_001,data/samples/SRR7190186_1.fastq.gz,data/samples/SRR7190186_2.fastq.gz,unknown,AMM,62.5
+AMM_FR_002,data/samples/SRR7190187_1.fastq.gz,data/samples/SRR7190187_2.fastq.gz,unknown,AMM,58.1
+AMM_FR_003,data/samples/SRR7190188_1.fastq.gz,data/samples/SRR7190188_2.fastq.gz,unknown,AMM,71.3
+AMM_UK_004,data/samples/SRR7190189_1.fastq.gz,data/samples/SRR7190189_2.fastq.gz,unknown,AMM,45.0
+AMM_UK_005,data/samples/SRR7190190_1.fastq.gz,data/samples/SRR7190190_2.fastq.gz,unknown,AMM,49.2

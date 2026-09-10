@@ -58,6 +58,9 @@ process PLINK2_QC {
     tuple path("honeybee.pruned.bed"),
           path("honeybee.pruned.bim"),
           path("honeybee.pruned.fam"), emit: plink_files
+    tuple path("honeybee.qc.bed"),
+          path("honeybee.qc.bim"),
+          path("honeybee.qc.fam"),     emit: qc_files
     path "honeybee.qc.log",           emit: log
     path "versions.yml",              emit: versions
 
@@ -191,24 +194,29 @@ process PLINK2_GWAS {
     path "versions.yml",         emit: versions
 
     script:
-    def model = params.gwas_model == 'logistic'
-        ? '--logistic hide-covar'
-        : '--linear hide-covar'
+    // Le préfixe PLINK est déduit du .bed fourni (honeybee.qc ou honeybee.pruned)
+    def prefix = bed.name - ~/\.bed$/
+    def glm = params.gwas_model == 'logistic'
+        ? '--glm allow-no-covars firth-fallback hide-covar'
+        : '--glm allow-no-covars hide-covar'
     """
     plink2 \\
-        --bfile honeybee.pruned \\
+        --bfile ${prefix} \\
         --allow-extra-chr \\
         --pheno ${phenotype} \\
-        ${model} \\
-        --covar-variance-standardize \\
+        ${glm} \\
         --ci 0.95 \\
         --out honeybee_gwas \\
         --threads ${task.cpus}
 
-    # Résumé des résultats
-    echo "=== SNPs significatifs (p < ${params.gwas_pval}) ==="
-    awk -v threshold=${params.gwas_pval} 'NR>1 && \$12 < threshold {print}' \\
-        honeybee_gwas*.glm.* | wc -l
+    # Résumé des résultats — la colonne P est repérée par son nom d'en-tête
+    RESULT=\$(ls honeybee_gwas.*.glm.* 2>/dev/null | head -1)
+    if [ -n "\$RESULT" ]; then
+        P_COL=\$(head -1 "\$RESULT" | tr '\\t' '\\n' | grep -nx 'P' | cut -d: -f1)
+        echo "=== SNPs significatifs (p < ${params.gwas_pval}) ==="
+        awk -v c="\$P_COL" -v t=${params.gwas_pval} \\
+            'NR>1 && \$c!="NA" && (\$c+0)<t' "\$RESULT" | wc -l
+    fi
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
