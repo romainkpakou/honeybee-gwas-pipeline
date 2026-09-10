@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+# Annule les runs précédents sur la même branche
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint Nextflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "26.04.6"
+
+      - name: nextflow lint
+        run: nextflow lint main.nf modules/
+
+  stub:
+    name: Stub run (workflow wiring)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "26.04.6"
+
+      # -stub exécute les blocs stub: (touch/mkdir) — aucun conteneur, aucun
+      # outil bioinfo, aucune donnée réelle : on valide que tout le workflow
+      # se câble et s'exécute de bout en bout.
+      - name: nextflow run -stub
+        run: nextflow run main.nf -profile stub -stub-run
+
+      - name: Vérifier les sorties attendues
+        run: |
+          test -f stub_results/05_gwas/gemma/output/honeybee.assoc.txt
+          test -f stub_results/03_variants/annotated/cohort.annotated.vcf.gz
+          test -f stub_results/06_report/gwas_report.html
+          echo "OK — le workflow produit toutes les sorties clés"

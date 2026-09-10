@@ -133,12 +133,17 @@ les critères GATK Best Practices :
   (nb SNPs, transitions/transversions, distribution des
   fréquences alléliques)
 
-### SnpEff
+### SnpEff (v5.2)
 **Rôle :** Annotation fonctionnelle des variants. Pour chaque
 SNP, prédit l'effet biologique : synonyme, non-synonyme,
-stop-gain, intronique, intergénique... Utilise la base
-de données Apis_mellifera construite sur Amel_HAv3.1.
-Indispensable pour identifier les variants candidats GWAS.
+stop-gain, intronique, intergénique... Indispensable pour
+identifier les variants candidats GWAS.
+**Base de données :** construite localement par le process
+`SNPEFF_BUILD` à partir du génome de référence et du GFF3 NCBI
+(`snpEff build -gff3`). Aucun téléchargement à l'exécution, et
+l'assemblage correspond exactement à celui du variant calling.
+Les options `-noCheckCds -noCheckProtein` évitent d'avoir besoin
+des fichiers CDS/protéines de référence (indisponibles hors-ligne).
 
 ---
 

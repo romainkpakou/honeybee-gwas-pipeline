@@ -113,8 +113,8 @@ process GATK_GENOMICSDBIMPORT {
     script:
     // Construire la liste des arguments -V pour chaque GVCF
     def vcf_args = gvcfs
-        .findAll { it.name.endsWith('.g.vcf.gz') }
-        .collect { "-V ${it}" }
+        .findAll { f -> f.name.endsWith('.g.vcf.gz') }
+        .collect { f -> "-V ${f}" }
         .join(" \\\n        ")
 
     """

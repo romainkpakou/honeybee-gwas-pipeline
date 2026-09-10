@@ -1,15 +1,16 @@
-.nextflow.log*
 # Nextflow
 .nextflow/
 .nextflow.log*
 work/
+.nextflow.pid
 
 # Résultats (trop volumineux pour GitHub)
 results/
 test_results/
+stub_results/
 !results/.gitkeep
 
-# Données brutes
+# Données brutes (les fixtures test/stub/ sont versionnées)
 data/reference/*.fa
 data/reference/*.fasta
 data/reference/*.fa.gz
@@ -21,6 +22,7 @@ data/reference/*.bwt*
 data/reference/*.pac
 data/reference/*.sa
 data/reference/*.0123
+data/reference/*.gff.gz
 data/samples/*.fastq*
 data/samples/*.bam
 data/samples/*.cram

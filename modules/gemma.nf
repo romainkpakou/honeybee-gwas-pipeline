@@ -1,10 +1,9 @@
-nextflow.enable.dsl = 2
 
 /*
     MODULE : GEMMA
     Outil   : GEMMA v0.98.5
     Rôle    : GWAS par modèle mixte linéaire (LMM)
-    Docker  : quay.io/biocontainers/gemma:0.98.5--hdcf5f25_4
+    Docker  : quay.io/biocontainers/gemma:0.98.5--h38cc83e_1
 
     DEUX PROCESS DANS CE MODULE :
 
@@ -58,10 +57,11 @@ process GEMMA_KINSHIP {
 
     publishDir "${params.outdir}/05_gwas/kinship", mode: 'copy'
 
-    container 'quay.io/biocontainers/gemma:0.98.5--hdcf5f25_4'
+    container 'quay.io/biocontainers/gemma:0.98.5--h38cc83e_1'
 
     input:
     tuple path(bed), path(bim), path(fam)
+    path phenotype
 
     output:
     path "output/honeybee.cXX.txt", emit: kinship
@@ -69,12 +69,16 @@ process GEMMA_KINSHIP {
     path "versions.yml",            emit: versions
 
     script:
+    // Préfixe PLINK déduit du .bed (kinship calculée sur les SNPs élagués LD)
+    def prefix = bed.name - ~/\.bed$/
     """
     # GEMMA calcule la matrice de parenté centrée (-gk 1)
-    # Input  : fichiers PLINK binaires (bed/bim/fam)
+    # Input  : fichiers PLINK binaires (bed/bim/fam) + phénotypes (-p)
+    # -p : GEMMA exclut du calcul les individus au phénotype manquant
     # Output : matrice N×N dans output/honeybee.cXX.txt
     gemma \\
-        -bfile honeybee.pruned \\
+        -bfile ${prefix} \\
+        -p ${phenotype} \\
         -gk 1 \\
         -o honeybee \\
         -outdir output
@@ -86,7 +90,7 @@ process GEMMA_KINSHIP {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        gemma: \$(gemma -v 2>&1 | head -1)
+        gemma: \$(gemma -v 2>&1 | grep -im1 version || echo 0.98.5)
     END_VERSIONS
     """
 
@@ -106,7 +110,7 @@ process GEMMA_LMM {
 
     publishDir "${params.outdir}/05_gwas/gemma", mode: 'copy'
 
-    container 'quay.io/biocontainers/gemma:0.98.5--hdcf5f25_4'
+    container 'quay.io/biocontainers/gemma:0.98.5--h38cc83e_1'
 
     input:
     tuple path(bed), path(bim), path(fam)
@@ -120,72 +124,59 @@ process GEMMA_LMM {
     path "versions.yml",                         emit: versions
 
     script:
+    // Préfixe PLINK déduit du .bed — l'association est testée sur le jeu QC
+    // (non élagué LD) tandis que la kinship vient du jeu élagué.
+    def prefix = bed.name - ~/\.bed$/
     """
     # ── Lancer le LMM GWAS ────────────────────────────────────────────────────
+    # -p     : fichier de phénotypes (une valeur par individu, ordre du .fam)
     # -lmm 4 : calcule les trois tests (Wald + LRT + Score) simultanément
     # -n 1   : utilise le premier phénotype du fichier
     # -k     : chemin vers la matrice de parenté calculée précédemment
     gemma \\
-        -bfile honeybee.pruned \\
+        -bfile ${prefix} \\
+        -p ${phenotype} \\
         -k ${kinship} \\
         -lmm 4 \\
         -n 1 \\
         -o honeybee \\
         -outdir output
 
-    # ── Post-traitement des résultats ─────────────────────────────────────────
-    python3 - <<'PYEOF'
-import pandas as pd
-import numpy as np
-import scipy.stats as stats
+    # ── Post-traitement des résultats (awk pur — pas de dépendance Python) ────
+    # Le lambda GC est recalculé par les scripts R (Manhattan / QQ). Ici on se
+    # limite à annoter chaque SNP avec les seuils de significativité et à
+    # afficher un résumé dans les logs Nextflow.
+    ASSOC=output/honeybee.assoc.txt
+    ANNOT=output/honeybee.assoc.annotated.txt
 
-# Charger les résultats GEMMA
-df = pd.read_csv('output/honeybee.assoc.txt', sep='\t')
-n_snps = len(df)
+    N_SNPS=\$(tail -n +2 "\$ASSOC" | wc -l)
+    P_COL=\$(head -1 "\$ASSOC" | tr '\\t' '\\n' | grep -nx 'p_wald' | cut -d: -f1)
+    BONF=\$(awk -v n="\$N_SNPS" 'BEGIN { if (n > 0) printf "%.6e", 0.05 / n; else print "NA" }')
 
-print(f"Nombre total de SNPs testés : {n_snps:,}")
+    echo "SNPs testés               : \$N_SNPS"
+    echo "Seuil Bonferroni (0.05/N) : \$BONF"
+    echo "Seuil suggestif           : 1e-5"
 
-# ── Calcul du facteur d'inflation génomique (lambda GC) ──────────────────────
-# Lambda mesure si les p-values sont globalement inflées
-# Lambda = 1.0 : pas d'inflation (idéal)
-# Lambda > 1.1 : inflation probable = problème de stratification
-chisq_obs  = stats.chi2.ppf(1 - df['p_wald'].dropna(), df=1)
-lambda_gc  = np.median(chisq_obs) / stats.chi2.ppf(0.5, df=1)
-print(f"Facteur d'inflation génomique λ = {lambda_gc:.4f}")
-if lambda_gc > 1.1:
-    print("ATTENTION : λ > 1.1 — vérifier la correction pour stratification")
-else:
-    print("λ acceptable — pas d'inflation détectée")
+    awk -v OFS='\\t' -v bonf="\$BONF" -v pc="\$P_COL" '
+        NR == 1 { print \$0, "bonferroni_threshold", "suggestive_threshold"; next }
+        {
+            print \$0, bonf, 1e-5
+            if (\$pc != "" && \$pc != "NA" && (\$pc + 0) < (bonf + 0)) nsig++
+            if (\$pc != "" && \$pc != "NA" && (\$pc + 0) < 1e-5)        nsug++
+        }
+        END {
+            print "SNPs significatifs (Bonferroni) : " nsig+0 > "/dev/stderr"
+            print "SNPs suggestifs (p < 1e-5)      : " nsug+0 > "/dev/stderr"
+        }
+    ' "\$ASSOC" > "\$ANNOT"
 
-# ── Seuils de significativité ─────────────────────────────────────────────────
-bonferroni = 0.05 / n_snps
-suggestif  = 1e-5
-
-df['significant_bonferroni'] = df['p_wald'] < bonferroni
-df['significant_suggestive'] = df['p_wald'] < suggestif
-
-n_sig = df['significant_bonferroni'].sum()
-n_sug = df['significant_suggestive'].sum()
-
-print(f"Seuil Bonferroni (p < {bonferroni:.2e}) : {n_sig} SNPs significatifs")
-print(f"Seuil suggestif  (p < {suggestif:.0e}) : {n_sug} SNPs suggestifs")
-
-# ── Top 10 SNPs les plus significatifs ───────────────────────────────────────
-print("\\n=== Top 10 SNPs les plus significatifs ===")
-top10 = df.nsmallest(10, 'p_wald')[['chr','ps','rs','af','beta','se','p_wald']]
-print(top10.to_string(index=False))
-
-# ── Sauvegarder les résultats annotés ─────────────────────────────────────────
-df['lambda_gc']             = lambda_gc
-df['bonferroni_threshold']  = bonferroni
-df['suggestive_threshold']  = suggestif
-df.to_csv('output/honeybee.assoc.annotated.txt', sep='\t', index=False)
-print("\\nRésultats annotés sauvegardés.")
-PYEOF
+    echo "=== Top 10 SNPs (p_wald croissant) ==="
+    head -1 "\$ASSOC"
+    tail -n +2 "\$ASSOC" | sort -g -k"\$P_COL","\$P_COL" | head -10
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        gemma: \$(gemma -v 2>&1 | head -1)
+        gemma: \$(gemma -v 2>&1 | grep -im1 version || echo 0.98.5)
     END_VERSIONS
     """
 

@@ -58,10 +58,15 @@ process PLINK2_QC {
     tuple path("honeybee.pruned.bed"),
           path("honeybee.pruned.bim"),
           path("honeybee.pruned.fam"), emit: plink_files
+    tuple path("honeybee.qc.bed"),
+          path("honeybee.qc.bim"),
+          path("honeybee.qc.fam"),     emit: qc_files
     path "honeybee.qc.log",           emit: log
     path "versions.yml",              emit: versions
 
     script:
+    def hwe_opt = params.hwe_filter ? "--hwe ${params.hwe}" : ''
+    def bad_ld  = params.plink_bad_ld ? '--bad-ld' : ''
     """
     # ── Étape 1 : Conversion VCF → PLINK + filtres QC ────────────────────────
     plink2 \\
@@ -72,6 +77,7 @@ process PLINK2_QC {
         --maf ${params.maf} \\
         --geno ${params.geno} \\
         --mind ${params.mind} \\
+        ${hwe_opt} \\
         --make-bed \\
         --out honeybee.qc \\
         --threads ${task.cpus} \\
@@ -85,7 +91,7 @@ process PLINK2_QC {
     plink2 \\
         --bfile honeybee.qc \\
         --allow-extra-chr \\
-        --bad-ld \\
+        ${bad_ld} \\
         --indep-pairwise ${params.ld_window} ${params.ld_step} ${params.ld_r2} \\
         --out honeybee.ldprune \\
         --threads ${task.cpus}
@@ -116,6 +122,7 @@ process PLINK2_QC {
     stub:
     """
     touch honeybee.pruned.bed honeybee.pruned.bim honeybee.pruned.fam
+    touch honeybee.qc.bed honeybee.qc.bim honeybee.qc.fam
     touch honeybee.qc.log
     touch versions.yml
     """
@@ -140,7 +147,8 @@ process PLINK2_PCA {
 
     script:
     """
-    # Calculer les fréquences alléliques d'abord (requis avec < 50 échantillons)
+    # Fréquences alléliques calculées explicitement puis réinjectées : PLINK2
+    # exige une source de fréquences pour --pca dès que l'effectif est faible.
     plink2 \\
         --bfile honeybee.pruned \\
         --allow-extra-chr \\
@@ -152,7 +160,7 @@ process PLINK2_PCA {
         --bfile honeybee.pruned \\
         --allow-extra-chr \\
         --read-freq honeybee.afreq \\
-        --pca 4 \\
+        --pca ${params.pca_components} \\
         --out honeybee \\
         --threads ${task.cpus}
 
@@ -191,24 +199,29 @@ process PLINK2_GWAS {
     path "versions.yml",         emit: versions
 
     script:
-    def model = params.gwas_model == 'logistic'
-        ? '--logistic hide-covar'
-        : '--linear hide-covar'
+    // Le préfixe PLINK est déduit du .bed fourni (honeybee.qc ou honeybee.pruned)
+    def prefix = bed.name - ~/\.bed$/
+    def glm = params.gwas_model == 'logistic'
+        ? '--glm allow-no-covars firth-fallback hide-covar'
+        : '--glm allow-no-covars hide-covar'
     """
     plink2 \\
-        --bfile honeybee.pruned \\
+        --bfile ${prefix} \\
         --allow-extra-chr \\
         --pheno ${phenotype} \\
-        ${model} \\
-        --covar-variance-standardize \\
+        ${glm} \\
         --ci 0.95 \\
         --out honeybee_gwas \\
         --threads ${task.cpus}
 
-    # Résumé des résultats
-    echo "=== SNPs significatifs (p < ${params.gwas_pval}) ==="
-    awk -v threshold=${params.gwas_pval} 'NR>1 && \$12 < threshold {print}' \\
-        honeybee_gwas*.glm.* | wc -l
+    # Résumé des résultats — la colonne P est repérée par son nom d'en-tête
+    RESULT=\$(ls honeybee_gwas.*.glm.* 2>/dev/null | head -1)
+    if [ -n "\$RESULT" ]; then
+        P_COL=\$(head -1 "\$RESULT" | tr '\\t' '\\n' | grep -nx 'P' | cut -d: -f1)
+        echo "=== SNPs significatifs (p < ${params.gwas_pval}) ==="
+        awk -v c="\$P_COL" -v t=${params.gwas_pval} \\
+            'NR>1 && \$c!="NA" && (\$c+0)<t' "\$RESULT" | wc -l
+    fi
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

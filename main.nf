@@ -15,11 +15,11 @@
     4.  Variant calling   GATK HaplotypeCaller (GVCF)
     5.  Génotypage joint  GATK GenomicsDBImport · GenotypeGVCFs
     6.  Filtrage          GATK VariantFiltration · bcftools
-    7.  Annotation        SnpEff (Apis_mellifera)
+    7.  Annotation        SnpEff (base construite depuis le GFF3)
     8.  Génétique pop.    PLINK2 · ADMIXTURE · vcftools
     9.  GWAS              GEMMA LMM · PLINK2
     10. Visualisation     R (Manhattan · QQ · PCA · Admixture · LD · FST)
-    11. Rapport           R Markdown HTML/PDF
+    11. Rapport           R Markdown HTML
 
     NOTE DSL2 v26 :
     En Nextflow DSL2 version 26+, TOUT le code exécutable doit être
@@ -56,10 +56,13 @@ include { GATK_GENOTYPEGVCFS       } from './modules/gatk'
 include { GATK_VARIANTFILTRATION   } from './modules/gatk'
 include { BCFTOOLS_FILTER          } from './modules/bcftools'
 include { BCFTOOLS_STATS           } from './modules/bcftools'
-// include { SNPEFF_ANNOTATE          } from './modules/snpeff'
+include { SNPEFF_BUILD             } from './modules/snpeff'
+include { SNPEFF_ANNOTATE          } from './modules/snpeff'
+include { SNPEFF_COMPRESS          } from './modules/snpeff'
 include { PLINK2_QC                } from './modules/plink2'
 include { PLINK2_PCA               } from './modules/plink2'
 include { PLINK2_GWAS              } from './modules/plink2'
+include { BUILD_PHENOTYPE          } from './modules/phenotype'
 include { ADMIXTURE_RUN            } from './modules/admixture'
 include { VCFTOOLS_FST             } from './modules/vcftools'
 include { VCFTOOLS_LD              } from './modules/vcftools'
@@ -81,7 +84,7 @@ include { GWAS_REPORT              } from './modules/report'
 // Chaque élément = [meta, [fastq_1, fastq_2]]
 // meta = map Groovy : {id, population, sex}
 def parseSamplesheet(csv) {
-    Channel
+    channel
         .fromPath(csv)
         .splitCsv(header: true, sep: ',')
         .map { row ->
@@ -98,6 +101,27 @@ def parseSamplesheet(csv) {
             // ou [meta, [fq1]] si single-end
             fq2 ? [meta, [fq1, fq2]] : [meta, [fq1]]
         }
+}
+
+// Détecte si des phénotypes sont disponibles pour le GWAS.
+// Deux sources possibles :
+//   1. --phenotype_file <fichier dédié>
+//   2. une colonne 'phenotype' dans le samplesheet avec >=1 valeur non vide
+// Lecture synchrone du CSV (exécutée dans le workflow, sur le nœud principal).
+def hasPhenotypes(csv) {
+    if (params.phenotype_file) return true
+    def f = file(csv)
+    if (!f.exists()) return false
+    def lines = f.readLines().findAll { row -> row?.trim() }
+    if (lines.size() < 2) return false
+    def header = lines[0].split(',').collect { col -> col.trim().toLowerCase() }
+    def idx = header.indexOf('phenotype')
+    if (idx < 0) return false
+    return lines.drop(1).any { row ->
+        def cols = row.split(',', -1)
+        idx < cols.size() &&
+            !(cols[idx].trim().toLowerCase() in ['', 'na', 'nan', '-9', 'none', 'null', '.'])
+    }
 }
 
 // Valide les paramètres obligatoires
@@ -124,6 +148,12 @@ workflow {
     // En DSL2 v26, TOUT statement exécutable doit être ici
     validateParams()
 
+    // GWAS activé si un fichier phénotype OU une colonne 'phenotype' est fourni
+    run_gwas = hasPhenotypes(params.input)
+
+    // Annotation SnpEff activée si un GFF3 valide est fourni
+    run_snpeff = params.gff ? file(params.gff).exists() : false
+
     log.info """
     ╔══════════════════════════════════════════════════════════════════╗
     ║        honeybee-gwas-pipeline v1.0.0
@@ -131,7 +161,9 @@ workflow {
     ╚══════════════════════════════════════════════════════════════════╝
       Samplesheet  : ${params.input}
       Génome       : ${params.genome}
-      Phénotypes   : ${params.phenotype_file ?: 'non fourni — GWAS ignoré'}
+      Phénotypes   : ${params.phenotype_file ?: (run_gwas ? "colonne 'phenotype' du samplesheet" : 'non fourni — GWAS ignoré')}
+      GWAS         : ${run_gwas ? 'ACTIVÉ' : 'désactivé'}
+      Annotation   : ${run_snpeff ? "SnpEff (${params.gff})" : 'désactivée (pas de GFF)'}
       Sortie       : ${params.outdir}
       Modèle GWAS  : ${params.gwas_model}
       MAF          : ${params.maf}
@@ -145,7 +177,7 @@ workflow {
     ch_reads = parseSamplesheet(params.input)
 
     // Canal du génome : valeur unique partagée par tous les process
-    ch_genome = Channel.value(file(params.genome))
+    ch_genome = channel.value(file(params.genome))
 
     // Indexer le génome pour GATK (fai + dict requis)
     SAMTOOLS_FAIDX(ch_genome)
@@ -153,16 +185,16 @@ workflow {
     ch_fai  = SAMTOOLS_FAIDX.out.fai
     ch_dict = GATK_DICT.out.dict
 
-    // Canal des phénotypes : vide si pas fourni → GWAS ignoré automatiquement
-    ch_pheno = params.phenotype_file
-        ? Channel.value(file(params.phenotype_file))
-        : Channel.empty()
+    // Canal de la source des phénotypes : fichier dédié si fourni, sinon le
+    // samplesheet lui-même (colonne 'phenotype'). BUILD_PHENOTYPE convertit
+    // cette source aux formats attendus par GEMMA et PLINK2.
+    ch_pheno_source = channel.value(file(params.phenotype_file ?: params.input))
 
     // Canal des valeurs K pour ADMIXTURE
-    // "2,3,4,5" → Channel émettant 2, 3, 4, 5 séquentiellement
+    // "2,3,4,5" → channel émettant 2, 3, 4, 5 séquentiellement
     // Le mot-clé 'each' dans ADMIXTURE_RUN lancera un job par valeur de K
-    ch_k_values = Channel
-        .of(params.admixture_k.split(',').collect { it.trim() as Integer })
+    ch_k_values = channel
+        .of(params.admixture_k.split(',').collect { k -> k.trim() as Integer })
         .flatten()
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -182,8 +214,8 @@ workflow {
 
     // collect() attend que TOUS les échantillons soient traités
     // avant de lancer MultiQC (qui a besoin de tous les rapports)
-    ch_qc_reports = FASTQC.out.zip.map { it[1] }
-        .mix(FASTP.out.json.map { it[1] })
+    ch_qc_reports = FASTQC.out.zip.map { meta_file -> meta_file[1] }
+        .mix(FASTP.out.json.map { meta_file -> meta_file[1] })
         .collect()
     MULTIQC_QC(ch_qc_reports, 'qc')
 
@@ -248,8 +280,8 @@ workflow {
     //   toute la cohorte pour appeler les variants rares et corriger
     //   les erreurs de génotypage individuels
     // ─────────────────────────────────────────────────────────────────────────
-    ch_all_gvcfs = GATK_HAPLOTYPECALLER.out.gvcf.map { it[1] }
-        .mix(GATK_HAPLOTYPECALLER.out.tbi.map { it[1] })
+    ch_all_gvcfs = GATK_HAPLOTYPECALLER.out.gvcf.map { meta_file -> meta_file[1] }
+        .mix(GATK_HAPLOTYPECALLER.out.tbi.map { meta_file -> meta_file[1] })
         .collect()
 
     GATK_GENOMICSDBIMPORT(ch_all_gvcfs, ch_genome)
@@ -271,16 +303,23 @@ workflow {
     ch_filtered_vcf = BCFTOOLS_FILTER.out.vcf
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 7 — Annotation fonctionnelle des variants
+    // ÉTAPE 7 — Annotation fonctionnelle des variants (SnpEff)
     //
-    // SNPEFF_ANNOTATE : prédit l'effet de chaque SNP sur les gènes
-    //   Base de données Apis_mellifera construite sur Amel_HAv3.1
-    //   Ajoute le champ ANN= dans l'INFO du VCF :
-    //   missense_variant, synonymous_variant, stop_gained, intron_variant...
-    //   Impact : HIGH, MODERATE, LOW, MODIFIER
+    // SNPEFF_BUILD    : construit une base SnpEff locale (génome + GFF3 NCBI)
+    //                   → assemblage identique à celui du variant calling
+    // SNPEFF_ANNOTATE : ajoute le champ ANN= (effet + impact) à chaque variant
+    //                   + rapport HTML/CSV agrégé par MultiQC
+    // SNPEFF_COMPRESS : recompresse (bgzip) et indexe (tabix) le VCF annoté
+    //
+    // Activé uniquement si params.gff pointe vers un fichier existant.
     // ─────────────────────────────────────────────────────────────────────────
-    // SNPEFF_ANNOTATE désactivé — nécessite accès internet
-    // SNPEFF_ANNOTATE(ch_filtered_vcf)
+    ch_snpeff_csv = channel.empty()
+    if (run_snpeff) {
+        SNPEFF_BUILD(ch_genome, channel.value(file(params.gff)))
+        SNPEFF_ANNOTATE(ch_filtered_vcf, SNPEFF_BUILD.out.db)
+        SNPEFF_COMPRESS(SNPEFF_ANNOTATE.out.vcf)
+        ch_snpeff_csv = SNPEFF_ANNOTATE.out.csv
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 8 — Génétique des populations
@@ -298,7 +337,8 @@ workflow {
     // VCFTOOLS_PI   : diversité nucléotidique π par fenêtres de 50 kb
     // ─────────────────────────────────────────────────────────────────────────
     PLINK2_QC(ch_filtered_vcf)
-    ch_plink = PLINK2_QC.out.plink_files
+    ch_plink    = PLINK2_QC.out.plink_files   // SNPs élagués LD  → PCA, ADMIXTURE, kinship
+    ch_plink_qc = PLINK2_QC.out.qc_files      // SNPs QC non élagués → tests d'association
 
     PLINK2_PCA(ch_plink)
 
@@ -310,8 +350,10 @@ workflow {
     VCFTOOLS_PI(ch_filtered_vcf)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 9 — GWAS (uniquement si fichier phénotype fourni)
+    // ÉTAPE 9 — GWAS (si colonne 'phenotype' du samplesheet ou --phenotype_file)
     //
+    // BUILD_PHENOTYPE : convertit la source des phénotypes aux formats
+    //                 GEMMA (-p) et PLINK2 (--pheno), ordre du .fam respecté
     // GEMMA_KINSHIP : calcule la matrice de parenté centrée N×N
     //                 Capture la structure de population ET la parenté cryptique
     // GEMMA_LMM     : GWAS par modèle mixte linéaire (LMM)
@@ -321,19 +363,28 @@ workflow {
     // PLINK2_GWAS   : association linéaire/logistique complémentaire
     //                 Plus rapide, utile pour validation croisée
     // ─────────────────────────────────────────────────────────────────────────
-    if (params.phenotype_file) {
-        GEMMA_KINSHIP(ch_plink)
+    if (run_gwas) {
+        // Construit phenotype.gemma.txt + phenotype.plink.tsv alignés sur le .fam
+        BUILD_PHENOTYPE(ch_plink, ch_pheno_source)
+        ch_pheno_gemma = BUILD_PHENOTYPE.out.gemma
+        ch_pheno_plink = BUILD_PHENOTYPE.out.plink
+
+        // Kinship sur les SNPs élagués LD
+        GEMMA_KINSHIP(ch_plink, ch_pheno_gemma)
+        // LMM sur le jeu QC complet, corrigé par la kinship
         GEMMA_LMM(
-            ch_plink,
+            ch_plink_qc,
             GEMMA_KINSHIP.out.kinship,
-            ch_pheno
+            ch_pheno_gemma
         )
         // Le module GEMMA expose 'annotated' (résultats avec lambda GC)
         ch_gwas_results = GEMMA_LMM.out.annotated
-        PLINK2_GWAS(ch_plink, ch_pheno)
+
+        // Association PLINK2 complémentaire sur le même jeu QC
+        PLINK2_GWAS(ch_plink_qc, ch_pheno_plink)
     } else {
-        log.warn "Pas de fichier phénotype fourni — étapes GWAS ignorées."
-        ch_gwas_results = Channel.empty()
+        log.warn "Aucun phénotype fourni (--phenotype_file ou colonne 'phenotype') — étapes GWAS ignorées."
+        ch_gwas_results = channel.empty()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -354,12 +405,12 @@ workflow {
     )
     PLOT_ADMIXTURE(
         ADMIXTURE_RUN.out.q_files.collect(),
-        PLINK2_QC.out.plink_files.map { it[2] }.first()
+        PLINK2_QC.out.plink_files.map { bed_bim_fam -> bed_bim_fam[2] }.first()
     )
     PLOT_LD_DECAY(VCFTOOLS_LD.out.ld)
     PLOT_FST(VCFTOOLS_FST.out.fst)
 
-    if (params.phenotype_file) {
+    if (run_gwas) {
         PLOT_MANHATTAN(ch_gwas_results)
         PLOT_QQ(ch_gwas_results)
     }
@@ -367,33 +418,35 @@ workflow {
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 11 — Rapport scientifique et MultiQC final
     //
-    // GWAS_REPORT    : rapport HTML/PDF via R Markdown
+    // GWAS_REPORT    : rapport HTML via R Markdown (rocker/tidyverse)
     //                  Intègre toutes les figures et statistiques clés
     // MULTIQC_FINAL  : agrège les stats alignement + déduplication + variants
     //
     // Note : .map { it[1] } extrait le fichier du tuple [meta, fichier]
     //        car MultiQC ne veut pas les métadonnées
     // ─────────────────────────────────────────────────────────────────────────
+    // ch_gwas_results = Channel.empty() si run_gwas est faux → .mix inoffensif
     ch_report_inputs = BCFTOOLS_STATS.out.stats
-        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { it[1] })
-        .mix(PICARD_MARKDUPLICATES.out.metrics.map { it[1] })
+        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta_file -> meta_file[1] })
+        .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta_file -> meta_file[1] })
         .mix(PLINK2_PCA.out.eigenvec)
         .mix(ADMIXTURE_RUN.out.q_files.flatten())
         .mix(VCFTOOLS_LD.out.ld)
         .mix(VCFTOOLS_FST.out.fst)
+        .mix(ch_gwas_results)
         .collect()
 
-    if (params.phenotype_file) {
-        ch_report_inputs = ch_report_inputs.mix(ch_gwas_results)
+    // Rapport R Markdown HTML — conteneur rocker/tidyverse (rmarkdown + pandoc)
+    if (run_gwas) {
+        GWAS_REPORT(ch_report_inputs, file("${projectDir}/report/gwas_report.Rmd"))
     }
 
-    // GWAS_REPORT désactivé temporairement — nécessite pandoc dans le conteneur
-    // GWAS_REPORT(ch_report_inputs.collect())
-
     // MultiQC final agrège alignement + déduplication + stats variants
+    // + résumé SnpEff (ch_snpeff_csv est vide si l'annotation est désactivée)
     ch_final_multiqc = BCFTOOLS_STATS.out.stats
-        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { it[1] })
-        .mix(PICARD_MARKDUPLICATES.out.metrics.map { it[1] })
+        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta_file -> meta_file[1] })
+        .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta_file -> meta_file[1] })
+        .mix(ch_snpeff_csv)
         .collect()
     MULTIQC_FINAL(ch_final_multiqc, 'final')
 
