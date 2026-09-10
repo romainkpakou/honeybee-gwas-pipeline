@@ -8,6 +8,11 @@ input:          "samplesheet.csv"
 outdir:         "results"
 genome:         "data/reference/Amel_HAv3.1.fa"
 
+# Annotation GFF3 (NCBI) — si fourni, SnpEff construit une base locale et
+# annote le VCF. Laisser vide/null pour désactiver l'annotation.
+gff:            "data/reference/Amel_HAv3.1.gff.gz"
+genome_species: "Apis mellifera"
+
 # Phénotypes GWAS — deux options (laisser phenotype_file à null pour l'option 1) :
 #   1. colonne 'phenotype' dans le samplesheet (activation automatique du GWAS)
 #   2. fichier dédié : "sample,valeur" ou "FID IID valeur"

@@ -36,7 +36,7 @@ FASTQ bruts
 ↓
 ÉTAPE 6 — Filtrage GATK VariantFiltration · bcftools
 ↓
-ÉTAPE 7 — Annotation SnpEff (Apis_mellifera)
+ÉTAPE 7 — Annotation SnpEff (base construite localement depuis le GFF3)
 ↓
 ÉTAPE 8 — Pop. gen. PLINK2 · ADMIXTURE · vcftools (FST · LD · π)
 ↓
@@ -123,7 +123,7 @@ Alternative : `--phenotype_file` pointant vers un fichier `sample,valeur` ou
 results/
 ├── 01_qc/ FastQC, fastp, MultiQC
 ├── 02_alignment/ BAM triés et dédupliqués
-├── 03_variants/ VCF filtré et annoté (SnpEff)
+├── 03_variants/ VCF filtré + VCF annoté SnpEff + rapport d'effets
 ├── 04_population/ PCA, ADMIXTURE, FST, LD decay
 ├── 05_gwas/ GEMMA LMM, PLINK2, Manhattan + QQ plots
 ├── 06_report/ Rapport HTML complet (R Markdown)
@@ -141,6 +141,7 @@ results/
 | `--hwe` | 1e-6 | Seuil Hardy-Weinberg |
 | `--ld_r2` | 0.2 | Seuil r² pour l'élagage LD |
 | `--admixture_k` | `2,3,4,5` | Valeurs de K à tester |
+| `--gff` | `data/reference/Amel_HAv3.1.gff.gz` | Annotation GFF3 → active SnpEff (vide = désactivé) |
 | `--phenotype_file` | `null` | Fichier phénotypes (sinon colonne `phenotype` du samplesheet) |
 | `--gwas_model` | `lmm` | Modèle GWAS : `lmm` (GEMMA) ou `logistic` (trait binaire) |
 | `--gwas_pval` | 1e-6 | Seuil de significativité GWAS |

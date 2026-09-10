@@ -11,6 +11,10 @@
   pour les tests d'association (la kinship reste calculée sur le jeu élagué LD)
 - `GWAS_REPORT` réactivé : rapport HTML R Markdown (résumé QC, PCA, ADMIXTURE,
   Manhattan, top SNPs), généré si le GWAS est activé
+- **Annotation SnpEff réactivée** (étape 7), en mode hors-ligne : `SNPEFF_BUILD`
+  construit la base à partir du génome + GFF3 NCBI (assemblage identique au
+  variant calling), `SNPEFF_ANNOTATE` produit le VCF annoté + rapport HTML/CSV
+  (agrégé par MultiQC), `SNPEFF_COMPRESS` bgzip + tabix. Activée par `--gff`.
 
 ### Corrigé
 - `GWAS_REPORT` : conteneur `quay.io/biocontainers/r-base` (sans pandoc) →

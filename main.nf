@@ -15,7 +15,7 @@
     4.  Variant calling   GATK HaplotypeCaller (GVCF)
     5.  Génotypage joint  GATK GenomicsDBImport · GenotypeGVCFs
     6.  Filtrage          GATK VariantFiltration · bcftools
-    7.  Annotation        SnpEff (Apis_mellifera)
+    7.  Annotation        SnpEff (base construite depuis le GFF3)
     8.  Génétique pop.    PLINK2 · ADMIXTURE · vcftools
     9.  GWAS              GEMMA LMM · PLINK2
     10. Visualisation     R (Manhattan · QQ · PCA · Admixture · LD · FST)
@@ -56,7 +56,9 @@ include { GATK_GENOTYPEGVCFS       } from './modules/gatk'
 include { GATK_VARIANTFILTRATION   } from './modules/gatk'
 include { BCFTOOLS_FILTER          } from './modules/bcftools'
 include { BCFTOOLS_STATS           } from './modules/bcftools'
-// include { SNPEFF_ANNOTATE          } from './modules/snpeff'
+include { SNPEFF_BUILD             } from './modules/snpeff'
+include { SNPEFF_ANNOTATE          } from './modules/snpeff'
+include { SNPEFF_COMPRESS          } from './modules/snpeff'
 include { PLINK2_QC                } from './modules/plink2'
 include { PLINK2_PCA               } from './modules/plink2'
 include { PLINK2_GWAS              } from './modules/plink2'
@@ -149,6 +151,9 @@ workflow {
     // GWAS activé si un fichier phénotype OU une colonne 'phenotype' est fourni
     run_gwas = hasPhenotypes(params.input)
 
+    // Annotation SnpEff activée si un GFF3 valide est fourni
+    run_snpeff = params.gff ? file(params.gff).exists() : false
+
     log.info """
     ╔══════════════════════════════════════════════════════════════════╗
     ║        honeybee-gwas-pipeline v1.0.0
@@ -158,6 +163,7 @@ workflow {
       Génome       : ${params.genome}
       Phénotypes   : ${params.phenotype_file ?: (run_gwas ? "colonne 'phenotype' du samplesheet" : 'non fourni — GWAS ignoré')}
       GWAS         : ${run_gwas ? 'ACTIVÉ' : 'désactivé'}
+      Annotation   : ${run_snpeff ? "SnpEff (${params.gff})" : 'désactivée (pas de GFF)'}
       Sortie       : ${params.outdir}
       Modèle GWAS  : ${params.gwas_model}
       MAF          : ${params.maf}
@@ -297,16 +303,23 @@ workflow {
     ch_filtered_vcf = BCFTOOLS_FILTER.out.vcf
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ÉTAPE 7 — Annotation fonctionnelle des variants
+    // ÉTAPE 7 — Annotation fonctionnelle des variants (SnpEff)
     //
-    // SNPEFF_ANNOTATE : prédit l'effet de chaque SNP sur les gènes
-    //   Base de données Apis_mellifera construite sur Amel_HAv3.1
-    //   Ajoute le champ ANN= dans l'INFO du VCF :
-    //   missense_variant, synonymous_variant, stop_gained, intron_variant...
-    //   Impact : HIGH, MODERATE, LOW, MODIFIER
+    // SNPEFF_BUILD    : construit une base SnpEff locale (génome + GFF3 NCBI)
+    //                   → assemblage identique à celui du variant calling
+    // SNPEFF_ANNOTATE : ajoute le champ ANN= (effet + impact) à chaque variant
+    //                   + rapport HTML/CSV agrégé par MultiQC
+    // SNPEFF_COMPRESS : recompresse (bgzip) et indexe (tabix) le VCF annoté
+    //
+    // Activé uniquement si params.gff pointe vers un fichier existant.
     // ─────────────────────────────────────────────────────────────────────────
-    // SNPEFF_ANNOTATE désactivé — nécessite accès internet
-    // SNPEFF_ANNOTATE(ch_filtered_vcf)
+    ch_snpeff_csv = Channel.empty()
+    if (run_snpeff) {
+        SNPEFF_BUILD(ch_genome, Channel.value(file(params.gff)))
+        SNPEFF_ANNOTATE(ch_filtered_vcf, SNPEFF_BUILD.out.db)
+        SNPEFF_COMPRESS(SNPEFF_ANNOTATE.out.vcf)
+        ch_snpeff_csv = SNPEFF_ANNOTATE.out.csv
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 8 — Génétique des populations
@@ -429,9 +442,11 @@ workflow {
     }
 
     // MultiQC final agrège alignement + déduplication + stats variants
+    // + résumé SnpEff (ch_snpeff_csv est vide si l'annotation est désactivée)
     ch_final_multiqc = BCFTOOLS_STATS.out.stats
-        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { it[1] })
-        .mix(PICARD_MARKDUPLICATES.out.metrics.map { it[1] })
+        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta_file -> meta_file[1] })
+        .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta_file -> meta_file[1] })
+        .mix(ch_snpeff_csv)
         .collect()
     MULTIQC_FINAL(ch_final_multiqc, 'final')
 
