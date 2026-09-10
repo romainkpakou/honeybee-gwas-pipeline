@@ -84,7 +84,7 @@ include { GWAS_REPORT              } from './modules/report'
 // Chaque élément = [meta, [fastq_1, fastq_2]]
 // meta = map Groovy : {id, population, sex}
 def parseSamplesheet(csv) {
-    Channel
+    channel
         .fromPath(csv)
         .splitCsv(header: true, sep: ',')
         .map { row ->
@@ -112,9 +112,9 @@ def hasPhenotypes(csv) {
     if (params.phenotype_file) return true
     def f = file(csv)
     if (!f.exists()) return false
-    def lines = f.readLines().findAll { it?.trim() }
+    def lines = f.readLines().findAll { row -> row?.trim() }
     if (lines.size() < 2) return false
-    def header = lines[0].split(',').collect { it.trim().toLowerCase() }
+    def header = lines[0].split(',').collect { col -> col.trim().toLowerCase() }
     def idx = header.indexOf('phenotype')
     if (idx < 0) return false
     return lines.drop(1).any { row ->
@@ -177,7 +177,7 @@ workflow {
     ch_reads = parseSamplesheet(params.input)
 
     // Canal du génome : valeur unique partagée par tous les process
-    ch_genome = Channel.value(file(params.genome))
+    ch_genome = channel.value(file(params.genome))
 
     // Indexer le génome pour GATK (fai + dict requis)
     SAMTOOLS_FAIDX(ch_genome)
@@ -188,13 +188,13 @@ workflow {
     // Canal de la source des phénotypes : fichier dédié si fourni, sinon le
     // samplesheet lui-même (colonne 'phenotype'). BUILD_PHENOTYPE convertit
     // cette source aux formats attendus par GEMMA et PLINK2.
-    ch_pheno_source = Channel.value(file(params.phenotype_file ?: params.input))
+    ch_pheno_source = channel.value(file(params.phenotype_file ?: params.input))
 
     // Canal des valeurs K pour ADMIXTURE
-    // "2,3,4,5" → Channel émettant 2, 3, 4, 5 séquentiellement
+    // "2,3,4,5" → channel émettant 2, 3, 4, 5 séquentiellement
     // Le mot-clé 'each' dans ADMIXTURE_RUN lancera un job par valeur de K
-    ch_k_values = Channel
-        .of(params.admixture_k.split(',').collect { it.trim() as Integer })
+    ch_k_values = channel
+        .of(params.admixture_k.split(',').collect { k -> k.trim() as Integer })
         .flatten()
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -214,8 +214,8 @@ workflow {
 
     // collect() attend que TOUS les échantillons soient traités
     // avant de lancer MultiQC (qui a besoin de tous les rapports)
-    ch_qc_reports = FASTQC.out.zip.map { it[1] }
-        .mix(FASTP.out.json.map { it[1] })
+    ch_qc_reports = FASTQC.out.zip.map { meta_file -> meta_file[1] }
+        .mix(FASTP.out.json.map { meta_file -> meta_file[1] })
         .collect()
     MULTIQC_QC(ch_qc_reports, 'qc')
 
@@ -280,8 +280,8 @@ workflow {
     //   toute la cohorte pour appeler les variants rares et corriger
     //   les erreurs de génotypage individuels
     // ─────────────────────────────────────────────────────────────────────────
-    ch_all_gvcfs = GATK_HAPLOTYPECALLER.out.gvcf.map { it[1] }
-        .mix(GATK_HAPLOTYPECALLER.out.tbi.map { it[1] })
+    ch_all_gvcfs = GATK_HAPLOTYPECALLER.out.gvcf.map { meta_file -> meta_file[1] }
+        .mix(GATK_HAPLOTYPECALLER.out.tbi.map { meta_file -> meta_file[1] })
         .collect()
 
     GATK_GENOMICSDBIMPORT(ch_all_gvcfs, ch_genome)
@@ -313,9 +313,9 @@ workflow {
     //
     // Activé uniquement si params.gff pointe vers un fichier existant.
     // ─────────────────────────────────────────────────────────────────────────
-    ch_snpeff_csv = Channel.empty()
+    ch_snpeff_csv = channel.empty()
     if (run_snpeff) {
-        SNPEFF_BUILD(ch_genome, Channel.value(file(params.gff)))
+        SNPEFF_BUILD(ch_genome, channel.value(file(params.gff)))
         SNPEFF_ANNOTATE(ch_filtered_vcf, SNPEFF_BUILD.out.db)
         SNPEFF_COMPRESS(SNPEFF_ANNOTATE.out.vcf)
         ch_snpeff_csv = SNPEFF_ANNOTATE.out.csv
@@ -384,7 +384,7 @@ workflow {
         PLINK2_GWAS(ch_plink_qc, ch_pheno_plink)
     } else {
         log.warn "Aucun phénotype fourni (--phenotype_file ou colonne 'phenotype') — étapes GWAS ignorées."
-        ch_gwas_results = Channel.empty()
+        ch_gwas_results = channel.empty()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -405,7 +405,7 @@ workflow {
     )
     PLOT_ADMIXTURE(
         ADMIXTURE_RUN.out.q_files.collect(),
-        PLINK2_QC.out.plink_files.map { it[2] }.first()
+        PLINK2_QC.out.plink_files.map { bed_bim_fam -> bed_bim_fam[2] }.first()
     )
     PLOT_LD_DECAY(VCFTOOLS_LD.out.ld)
     PLOT_FST(VCFTOOLS_FST.out.fst)

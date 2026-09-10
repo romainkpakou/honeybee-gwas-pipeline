@@ -89,9 +89,10 @@ process SNPEFF_BUILD {
     """
 
     stub:
+    db = genome.name.replaceAll(/\.(fa|fasta|fna)(\.gz)?$/, '')
     """
-    mkdir -p snpeff_data/${genome.baseName}
-    touch snpeff_data/${genome.baseName}/snpEffectPredictor.bin
+    mkdir -p snpeff_data/${db}
+    touch snpeff_data/${db}/snpEffectPredictor.bin
     touch snpEff.config versions.yml
     """
 }

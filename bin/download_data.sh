@@ -93,13 +93,15 @@ done
 echo ""
 echo "Génération du samplesheet..."
 SHEET="samplesheet.csv"
-echo "sample,fastq_1,fastq_2,sex,population" > ${SHEET}
+# La colonne 'phenotype' est laissée vide : la renseigner (trait quantitatif
+# ou binaire 0/1) pour activer l'étape GWAS. Vide => GWAS ignoré.
+echo "sample,fastq_1,fastq_2,sex,population,phenotype" > ${SHEET}
 
 for i in $(seq 0 $((N-1))); do
     SRR=${SAMPLES[$i]}
     COUNTRY=${COUNTRIES[$i]}
     SAMPLE_NAME="AMM_${COUNTRY}_$(printf '%03d' $((i+1)))"
-    echo "${SAMPLE_NAME},${SMP}/${SRR}_1.fastq.gz,${SMP}/${SRR}_2.fastq.gz,unknown,AMM" >> ${SHEET}
+    echo "${SAMPLE_NAME},${SMP}/${SRR}_1.fastq.gz,${SMP}/${SRR}_2.fastq.gz,unknown,AMM," >> ${SHEET}
 done
 
 echo ""

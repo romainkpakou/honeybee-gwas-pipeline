@@ -3,6 +3,16 @@
 ## [Non publié]
 
 ### Ajouté
+- **Intégration continue** (`.github/workflows/ci.yml`) : `nextflow lint` +
+  exécution `-stub` de bout en bout du workflow sur fixtures minimales
+  versionnées (`test/stub/`), sans conteneur ni donnée réelle
+- **Séparation démo / production** : `-profile test` = 5 échantillons, filtres
+  relâchés ; `conf/params.yml` = modèle de production commenté ;
+  `docs/running_a_real_cohort.md` = guide de passage à l'échelle
+- `process.resourceLimits` : plafonne cpus/mémoire/temps de toutes les tâches
+  aux valeurs `max_*` (corrige `GEMMA_LMM` qui demandait 32 Go)
+- Paramètres exposés : `pca_components`, `plink_bad_ld`, `hwe_filter`
+  (auparavant codés en dur dans `modules/plink2.nf` pour le jeu de 5 échantillons)
 - `BUILD_PHENOTYPE` : nouveau module qui construit les fichiers de phénotypes
   aux formats GEMMA (`-p`) et PLINK2 (`--pheno`), alignés sur l'ordre du `.fam`
 - Activation automatique du GWAS via une colonne `phenotype` dans le samplesheet

@@ -1,5 +1,6 @@
 # honeybee-gwas-pipeline
 
+[![CI](https://github.com/romainkpakou/honeybee-gwas-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/romainkpakou/honeybee-gwas-pipeline/actions/workflows/ci.yml)
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A523.04.0-23aa62.svg)](https://www.nextflow.io/)
 [![Docker](https://img.shields.io/badge/container-Docker-blue.svg)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -67,33 +68,29 @@ via Docker — aucune installation manuelle requise.
 ### 1. Télécharger les données publiques
 
 ```bash
-# Génome Amel_HAv3.1 + 10 échantillons WGS (PRJNA473480)
-bash bin/download_data.sh 10
+# Génome Amel_HAv3.1 + annotation GFF3 + N échantillons WGS (PRJNA473480)
+bash bin/download_data.sh 5
 ```
 
-### 2. Configurer les paramètres
+### 2. Démonstration (5 échantillons)
 
 ```bash
-# Éditer conf/params.yml selon vos besoins
-nano conf/params.yml
+# Bout-en-bout avec filtres relâchés — résultats sans valeur biologique
+nextflow run main.nf -profile test,docker -resume
 ```
 
-### 3. Lancer le pipeline
+### 3. Analyse réelle
 
 ```bash
-# Exécution locale avec Docker
-nextflow run main.nf \
-    -params-file conf/params.yml \
-    -profile docker
+# 1. ajouter une colonne 'phenotype' au samplesheet.csv
+# 2. ajuster conf/params.yml (filtres QC de production, ressources)
+nextflow run main.nf -params-file conf/params.yml -profile docker -resume
 
-# Cluster HPC avec SLURM + Singularity
-nextflow run main.nf \
-    -params-file conf/params.yml \
-    -profile slurm
-
-# Test rapide (données minimales)
-nextflow run main.nf -profile test,docker
+# Cluster HPC
+nextflow run main.nf -params-file conf/params.yml -profile slurm -resume
 ```
+
+Guide détaillé : [`docs/running_a_real_cohort.md`](docs/running_a_real_cohort.md)
 
 ---
 
@@ -141,10 +138,14 @@ results/
 | `--hwe` | 1e-6 | Seuil Hardy-Weinberg |
 | `--ld_r2` | 0.2 | Seuil r² pour l'élagage LD |
 | `--admixture_k` | `2,3,4,5` | Valeurs de K à tester |
-| `--gff` | `data/reference/Amel_HAv3.1.gff.gz` | Annotation GFF3 → active SnpEff (vide = désactivé) |
+| `--gff` | `Amel_HAv3.1.gff.gz` | Annotation GFF3 → active SnpEff (vide = désactivé) |
+| `--pca_components` | 20 | Nombre de PC (doit être `<` nombre d'individus) |
+| `--plink_bad_ld` | `false` | Forcer l'élagage LD si `< 50` individus |
+| `--hwe_filter` | `false` | Filtrage HWE (déconseillé en population structurée) |
 | `--phenotype_file` | `null` | Fichier phénotypes (sinon colonne `phenotype` du samplesheet) |
 | `--gwas_model` | `lmm` | Modèle GWAS : `lmm` (GEMMA) ou `logistic` (trait binaire) |
 | `--gwas_pval` | 1e-6 | Seuil de significativité GWAS |
+| `--max_cpus` / `--max_memory` / `--max_time` | 8 / 14.GB / 72.h | Plafonds appliqués à toutes les tâches |
 
 Tous les paramètres sont modifiables dans `conf/params.yml`.
 
