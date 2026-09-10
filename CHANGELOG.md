@@ -9,8 +9,14 @@
   (en plus de `--phenotype_file`)
 - `PLINK2_QC` expose désormais le jeu de SNPs QC non élagué (`qc_files`), utilisé
   pour les tests d'association (la kinship reste calculée sur le jeu élagué LD)
+- `GWAS_REPORT` réactivé : rapport HTML R Markdown (résumé QC, PCA, ADMIXTURE,
+  Manhattan, top SNPs), généré si le GWAS est activé
 
 ### Corrigé
+- `GWAS_REPORT` : conteneur `quay.io/biocontainers/r-base` (sans pandoc) →
+  `rocker/tidyverse:4.3.1` (rmarkdown + pandoc inclus) ; suppression du
+  `install.packages` à l'exécution ; template `.Rmd` passé en entrée du process ;
+  dépendances `kableExtra`/`gridExtra` retirées du template
 - Branche GWAS jamais fonctionnelle : `GEMMA_KINSHIP`/`GEMMA_LMM` ne recevaient
   aucun phénotype (colonne 6 du `.fam` à `-9`) → passage explicite via `-p`
 - Image Docker GEMMA obsolète (`0.98.5--hdcf5f25_4` retirée de quay.io)

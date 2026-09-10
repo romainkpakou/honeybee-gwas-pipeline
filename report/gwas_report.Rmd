@@ -37,6 +37,11 @@ library(knitr)
 COL_PRIMARY   <- "#2C3E50"
 COL_SECONDARY <- "#E67E22"
 COL_ACCENT    <- "#E74C3C"
+
+# Tableau HTML : knitr::kable seul (pas de dépendance kableExtra)
+show_table <- function(x, caption = NULL) {
+    knitr::kable(x, caption = caption, format = "html", table.attr = "class=\"table table-striped\"")
+}
 ```
 
 ## 1. Résumé du pipeline
@@ -58,8 +63,7 @@ info <- data.frame(
         "Amel_HAv3.1 (GCF_003254395.2)"
     )
 )
-knitr::kable(info, caption="Paramètres du pipeline") %>%
-    kableExtra::kable_styling(bootstrap_options=c("striped","hover"))
+show_table(info, caption="Paramètres du pipeline")
 ```
 
 ## 2. Contrôle qualité des variants
@@ -73,8 +77,7 @@ if (file.exists(stats_file)) {
         parts <- strsplit(l, "\t")[[1]]
         data.frame(Métrique=parts[3], Valeur=parts[4])
     }))
-    knitr::kable(sn_df, caption="Statistiques du VCF filtré") %>%
-        kableExtra::kable_styling(bootstrap_options=c("striped","hover"))
+    show_table(sn_df, caption="Statistiques du VCF filtré")
 } else {
     cat("Fichier de statistiques VCF non trouvé.")
 }
@@ -129,7 +132,7 @@ if (length(q_files) > 0) {
             theme(axis.text.x=element_blank(),
                   axis.ticks.x=element_blank())
     })
-    gridExtra::grid.arrange(grobs=plots, ncol=1)
+    for (p in plots) print(p)
 } else {
     cat("Fichiers ADMIXTURE non trouvés.")
 }
@@ -140,14 +143,22 @@ if (length(q_files) > 0) {
 ### 4.1 Manhattan plot
 
 ```{r manhattan, fig.width=14, fig.height=6}
-assoc_file <- file.path(params$results_dir,
-                        "output/honeybee.assoc.annotated.txt")
-if (file.exists(assoc_file)) {
+# Le fichier est stagé à plat par Nextflow (collect) — on le cherche
+# aussi bien à la racine que dans un sous-dossier output/.
+assoc_candidates <- c(
+    file.path(params$results_dir, "honeybee.assoc.annotated.txt"),
+    file.path(params$results_dir, "output/honeybee.assoc.annotated.txt")
+)
+assoc_file <- assoc_candidates[file.exists(assoc_candidates)][1]
+if (!is.na(assoc_file) && file.exists(assoc_file)) {
     df <- read.table(assoc_file, header=TRUE, sep="\t")
     if ("p_wald" %in% names(df)) df$P <- df$p_wald
-    if ("chr"    %in% names(df)) df$CHR <- as.integer(df$chr)
-    if ("ps"     %in% names(df)) df$BP  <- df$ps
-    df <- df[!is.na(df$P) & df$P > 0 & !is.na(df$CHR), ]
+    if ("ps"     %in% names(df)) df$BP  <- as.numeric(df$ps)
+    # 'chr' GEMMA peut être un accession NCBI (NC_037638.1) : on mappe
+    # chaque chromosome/contig distinct vers un entier séquentiel.
+    chr_raw <- if ("chr" %in% names(df)) as.character(df$chr) else as.character(df$CHR)
+    df$CHR <- match(chr_raw, sort(unique(chr_raw)))
+    df <- df[!is.na(df$P) & df$P > 0 & !is.na(df$CHR) & !is.na(df$BP), ]
     df$LOG10P <- -log10(df$P)
 
     n_snps     <- nrow(df)
@@ -194,7 +205,7 @@ if (file.exists(assoc_file)) {
 ### 4.2 Top SNPs significatifs
 
 ```{r top_snps}
-if (exists("df") && nrow(df) > 0) {
+if (exists("df") && all(c("P","LOG10P","CHR","BP") %in% names(df)) && nrow(df) > 0) {
     top_snps <- df %>%
         arrange(P) %>%
         head(20) %>%
@@ -205,8 +216,8 @@ if (exists("df") && nrow(df) > 0) {
         )
     knitr::kable(top_snps,
                  caption="Top 20 SNPs les plus significatifs",
-                 col.names=c("Chr","Position","p-value","-log10(p)")) %>%
-        kableExtra::kable_styling(bootstrap_options=c("striped","hover"))
+                 format="html", table.attr="class=\"table table-striped\"",
+                 col.names=c("Chr","Position","p-value","-log10(p)"))
 }
 ```
 

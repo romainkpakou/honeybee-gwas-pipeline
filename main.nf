@@ -19,7 +19,7 @@
     8.  Génétique pop.    PLINK2 · ADMIXTURE · vcftools
     9.  GWAS              GEMMA LMM · PLINK2
     10. Visualisation     R (Manhattan · QQ · PCA · Admixture · LD · FST)
-    11. Rapport           R Markdown HTML/PDF
+    11. Rapport           R Markdown HTML
 
     NOTE DSL2 v26 :
     En Nextflow DSL2 version 26+, TOUT le code exécutable doit être
@@ -405,28 +405,28 @@ workflow {
     // ─────────────────────────────────────────────────────────────────────────
     // ÉTAPE 11 — Rapport scientifique et MultiQC final
     //
-    // GWAS_REPORT    : rapport HTML/PDF via R Markdown
+    // GWAS_REPORT    : rapport HTML via R Markdown (rocker/tidyverse)
     //                  Intègre toutes les figures et statistiques clés
     // MULTIQC_FINAL  : agrège les stats alignement + déduplication + variants
     //
     // Note : .map { it[1] } extrait le fichier du tuple [meta, fichier]
     //        car MultiQC ne veut pas les métadonnées
     // ─────────────────────────────────────────────────────────────────────────
+    // ch_gwas_results = Channel.empty() si run_gwas est faux → .mix inoffensif
     ch_report_inputs = BCFTOOLS_STATS.out.stats
-        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { it[1] })
-        .mix(PICARD_MARKDUPLICATES.out.metrics.map { it[1] })
+        .mix(SAMTOOLS_FLAGSTAT.out.flagstat.map { meta_file -> meta_file[1] })
+        .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta_file -> meta_file[1] })
         .mix(PLINK2_PCA.out.eigenvec)
         .mix(ADMIXTURE_RUN.out.q_files.flatten())
         .mix(VCFTOOLS_LD.out.ld)
         .mix(VCFTOOLS_FST.out.fst)
+        .mix(ch_gwas_results)
         .collect()
 
+    // Rapport R Markdown HTML — conteneur rocker/tidyverse (rmarkdown + pandoc)
     if (run_gwas) {
-        ch_report_inputs = ch_report_inputs.mix(ch_gwas_results)
+        GWAS_REPORT(ch_report_inputs, file("${projectDir}/report/gwas_report.Rmd"))
     }
-
-    // GWAS_REPORT désactivé temporairement — nécessite pandoc dans le conteneur
-    // GWAS_REPORT(ch_report_inputs.collect())
 
     // MultiQC final agrège alignement + déduplication + stats variants
     ch_final_multiqc = BCFTOOLS_STATS.out.stats

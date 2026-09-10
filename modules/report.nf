@@ -1,12 +1,15 @@
 
 /*
     MODULE : GWAS Report
-    Outil   : R Markdown + knitr
-    Rôle    : Génération du rapport scientifique HTML/PDF
-    Docker  : quay.io/biocontainers/r-base:4.3.3
+    Outil   : R Markdown + knitr + pandoc
+    Rôle    : Génération du rapport scientifique HTML
+    Docker  : rocker/tidyverse:4.3.1  (rmarkdown + pandoc + tidyverse inclus)
 
     NOTE : manifest.version n'est pas accessible dans les modules.
-    On passe la version via une variable shell depuis main.nf.
+    On passe la version et les paramètres via des variables d'environnement.
+
+    Le template .Rmd est fourni en entrée du process (pas de ${projectDir}
+    dans le script) pour une exécution hermétique.
 */
 
 process GWAS_REPORT {
@@ -15,21 +18,19 @@ process GWAS_REPORT {
 
     publishDir "${params.outdir}/06_report", mode: 'copy'
 
-    container 'quay.io/biocontainers/r-base:4.3.3'
+    container 'rocker/tidyverse:4.3.1'
 
     input:
     path(all_results)
+    path(rmd)
 
     output:
     path "gwas_report.html", emit: html
-    path "gwas_report.pdf",  emit: pdf,  optional: true
     path "versions.yml",     emit: versions
 
     script:
-    // Passer les params Nextflow comme variables d'environnement
-    // pour les rendre accessibles dans le code R
-    def maf_val   = params.maf
-    def gwas_mod  = params.gwas_model
+    def maf_val  = params.maf
+    def gwas_mod = params.gwas_model
     """
     export PIPELINE_VERSION="1.0.0"
     export RUN_DATE=\$(date '+%Y-%m-%d %H:%M')
@@ -37,26 +38,9 @@ process GWAS_REPORT {
     export GWAS_MODEL="${gwas_mod}"
     export RESULTS_DIR="."
 
-    # Installer les packages R dans un répertoire local accessible en écriture
-    mkdir -p /tmp/Rlibs
-    Rscript -e "
-    lib_path <- '/tmp/Rlibs'
-    .libPaths(c(lib_path, .libPaths()))
-    pkgs <- c('rmarkdown','knitr','ggplot2','dplyr','tidyr','kableExtra')
-    missing <- pkgs[!sapply(pkgs, requireNamespace, quietly=TRUE)]
-    if (length(missing) > 0)
-        install.packages(missing, repos='https://cran.r-project.org',
-                         lib=lib_path, quiet=TRUE)
-    "
-    export R_LIBS_USER=/tmp/Rlibs
-
-    # Copier le template R Markdown
-    cp ${projectDir}/report/gwas_report.Rmd .
-
-    # Rendre le rapport HTML
+    # rocker/tidyverse fournit déjà rmarkdown, knitr, ggplot2, dplyr, tidyr
+    # et pandoc — aucune installation à l'exécution.
     Rscript - << 'REOF'
-    # Charger les packages depuis le répertoire local
-    .libPaths(c('/tmp/Rlibs', .libPaths()))
     pipeline_version <- Sys.getenv("PIPELINE_VERSION", "1.0.0")
     run_date         <- Sys.getenv("RUN_DATE")
     maf_threshold    <- as.numeric(Sys.getenv("MAF_THRESHOLD", "0.05"))
@@ -64,17 +48,18 @@ process GWAS_REPORT {
     results_dir      <- Sys.getenv("RESULTS_DIR", ".")
 
     rmarkdown::render(
-        'gwas_report.Rmd',
+        "${rmd}",
         output_format = rmarkdown::html_document(
             toc            = TRUE,
             toc_float      = TRUE,
             toc_depth      = 3,
-            code_folding   = 'hide',
-            theme          = 'flatly',
-            highlight      = 'tango',
+            code_folding   = "hide",
+            theme          = "flatly",
+            highlight      = "tango",
             self_contained = TRUE
         ),
-        output_file = 'gwas_report.html',
+        output_file = file.path(getwd(), "gwas_report.html"),
+        knit_root_dir = getwd(),
         params = list(
             pipeline_version = pipeline_version,
             run_date         = run_date,
@@ -83,18 +68,19 @@ process GWAS_REPORT {
             gwas_model       = gwas_model
         )
     )
-    cat("Rapport HTML genere : gwas_report.html\\n")
+    cat("Rapport HTML généré : gwas_report.html\\n")
 REOF
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         r-base: \$(R --version | head -1 | awk '{print \$3}')
         rmarkdown: \$(Rscript -e "cat(as.character(packageVersion('rmarkdown')))")
+        pandoc: \$(pandoc --version | head -1 | awk '{print \$2}')
     END_VERSIONS
     """
 
     stub:
     """
-    touch gwas_report.html gwas_report.pdf versions.yml
+    touch gwas_report.html versions.yml
     """
 }

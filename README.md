@@ -44,7 +44,7 @@ FASTQ bruts
 ↓
 ÉTAPE 10 — Figures Manhattan · QQ · PCA · Admixture · FST · LD decay
 ↓
-ÉTAPE 11 — Rapport R Markdown HTML/PDF
+ÉTAPE 11 — Rapport R Markdown HTML
 
 
 ---
@@ -126,7 +126,7 @@ results/
 ├── 03_variants/ VCF filtré et annoté (SnpEff)
 ├── 04_population/ PCA, ADMIXTURE, FST, LD decay
 ├── 05_gwas/ GEMMA LMM, PLINK2, Manhattan + QQ plots
-├── 06_report/ Rapport HTML/PDF complet
+├── 06_report/ Rapport HTML complet (R Markdown)
 └── pipeline_info/ Nextflow report, timeline, trace, DAG
 
 ---
