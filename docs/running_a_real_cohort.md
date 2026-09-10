@@ -37,6 +37,10 @@ Copier et éditer le modèle de production :
 cp conf/params.yml conf/my_run.yml
 ```
 
+> `conf/demo10.yml` est un exemple intermédiaire prêt à l'emploi : 10 génomes
+> A. m. mellifera, paramètres adaptés à un petit effectif (`pca_components: 8`,
+> `plink_bad_ld: true`), sans phénotype.
+
 Points d'attention pour une vraie cohorte :
 
 | Paramètre | Démo (5 ind.) | Production | Remarque |

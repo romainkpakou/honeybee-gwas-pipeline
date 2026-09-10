@@ -124,6 +124,17 @@ results/
 └── pipeline_info/   Nextflow report, timeline, trace, DAG
 ```
 
+### Exemple de sorties
+
+Rapports du profil de démonstration (5 génomes, `-profile test`) dans
+**[`docs/example_output/`](docs/example_output/)** : rapport MultiQC (alignement,
+déduplication, stats variants) et rapport SnpEff (227 variants annotés —
+88 missense, 5 stop_gained, 13 synonymous). Voir le
+[README du dossier](docs/example_output/) pour les visualiser.
+
+> Démonstration technique uniquement — à cette échelle, les résultats popgen/GWAS
+> n'ont pas de valeur biologique (cf. [`docs/running_a_real_cohort.md`](docs/running_a_real_cohort.md)).
+
 ---
 
 ## Paramètres principaux

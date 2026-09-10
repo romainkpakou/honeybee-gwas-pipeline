@@ -1,0 +1,59 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuration : run de démonstration à 10 génomes
+#
+# 10 échantillons A. m. mellifera d'Europe occidentale (PRJNA473480), ~10×.
+# Objectif : produire des sorties de génétique des populations réalistes
+# (QC, annotation SnpEff, déclin du LD, diversité π, PCA, ADMIXTURE).
+#
+# Limites assumées :
+#   - pas de phénotype → étape GWAS ignorée
+#   - une seule sous-espèce → FST vide (pas de population « OTHER »)
+#
+# Usage :
+#   bash bin/download_data.sh 10
+#   mv samplesheet.csv samplesheet_demo10.csv && git checkout samplesheet.csv
+#   nextflow run main.nf -params-file conf/demo10.yml -profile docker -resume
+#
+# (samplesheet_demo10.csv et results/ ne sont pas versionnés)
+# ─────────────────────────────────────────────────────────────────────────────
+
+input:          "samplesheet_demo10.csv"
+outdir:         "results"           # déjà dans .gitignore
+genome:         "data/reference/Amel_HAv3.1.fa"
+gff:            "data/reference/Amel_HAv3.1.gff.gz"
+genome_species: "Apis mellifera"
+phenotype_file: null
+
+# QC des lectures
+min_quality: 20
+min_length:  50
+bwa_threads: 4
+
+# GATK — filtres Best Practices (SNPs)
+gatk_java:       "-Xmx8g"
+snp_qd:          2.0
+snp_fs:          60.0
+snp_mq:          40.0
+snp_sor:         3.0
+snp_mqranksum:  -12.5
+snp_readposrank: -8.0
+
+# Génétique des populations — adapté à 10 individus ~10×
+maf:            0.05
+geno:           0.10     # un peu plus permissif (couverture modérée)
+mind:           0.20
+hwe_filter:     false
+ld_window:      50
+ld_step:        10
+ld_r2:          0.2
+pca_components: 8        # doit rester < 10
+plink_bad_ld:   true     # < 50 individus
+admixture_k:    "2,3,4"
+
+gwas_model:     "lmm"
+gwas_pval:      1e-6
+
+# Ressources — machine unique 8 cœurs / ~15 Go
+max_cpus:   8
+max_memory: "13.GB"
+max_time:   "72.h"
