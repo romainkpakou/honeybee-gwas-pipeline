@@ -199,4 +199,4 @@ MIT — voir [LICENSE](LICENSE)
 **Romain KPAKOU**
 Master 2 Bioinformatique, Biostatistique & Biologie Computationnelle
 Nantes Université
-kpakouromain@gmail.com | [github.com/romainkpakou](https://github.com/romainkpakou)
+kpakouromain@gmail.com | [github.com/romainkpakou](https://github.com/romainkpakou) | [Portfolio](https://romainkpakou.github.io)
