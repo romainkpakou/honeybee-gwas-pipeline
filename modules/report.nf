@@ -32,7 +32,7 @@ process GWAS_REPORT {
     def maf_val  = params.maf
     def gwas_mod = params.gwas_model
     """
-    export PIPELINE_VERSION="1.0.0"
+    export PIPELINE_VERSION="1.1.0"
     export RUN_DATE=\$(date '+%Y-%m-%d %H:%M')
     export MAF_THRESHOLD="${maf_val}"
     export GWAS_MODEL="${gwas_mod}"
@@ -41,7 +41,7 @@ process GWAS_REPORT {
     # rocker/tidyverse fournit déjà rmarkdown, knitr, ggplot2, dplyr, tidyr
     # et pandoc — aucune installation à l'exécution.
     Rscript - << 'REOF'
-    pipeline_version <- Sys.getenv("PIPELINE_VERSION", "1.0.0")
+    pipeline_version <- Sys.getenv("PIPELINE_VERSION", "1.1.0")
     run_date         <- Sys.getenv("RUN_DATE")
     maf_threshold    <- as.numeric(Sys.getenv("MAF_THRESHOLD", "0.05"))
     gwas_model       <- Sys.getenv("GWAS_MODEL", "lmm")

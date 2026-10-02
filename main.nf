@@ -5,7 +5,7 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     Auteur      : Romain KPAKOU
     Description : Pipeline WGS et GWAS pour Apis mellifera mellifera
-    Version     : 1.0.0
+    Version     : 1.1.0
     GitHub      : https://github.com/romainkpakou/honeybee-gwas-pipeline
 
     ÉTAPES :
@@ -64,6 +64,7 @@ include { PLINK2_PCA               } from './modules/plink2'
 include { PLINK2_GWAS              } from './modules/plink2'
 include { BUILD_PHENOTYPE          } from './modules/phenotype'
 include { ADMIXTURE_RUN            } from './modules/admixture'
+include { ADMIXTURE_BEST_K         } from './modules/admixture'
 include { VCFTOOLS_FST             } from './modules/vcftools'
 include { VCFTOOLS_LD              } from './modules/vcftools'
 include { VCFTOOLS_PI              } from './modules/vcftools'
@@ -330,6 +331,7 @@ workflow {
     //                 Produit .eigenvec (coordonnées) et .eigenval (variance)
     // ADMIXTURE_RUN : proportions d'ascendance pour K=2..5 en parallèle
     //                 Le mot-clé 'each' dans le module lance un job par K
+    // ADMIXTURE_BEST_K : tableau des erreurs CV + K retenu (CV minimale)
     // VCFTOOLS_FST  : différenciation génétique FST entre populations
     //                 en fenêtres glissantes de 50 kb
     // VCFTOOLS_LD   : déclin du LD (r²) en fonction de la distance physique
@@ -344,6 +346,8 @@ workflow {
 
     // ch_k_values émet 2, 3, 4, 5 → 4 jobs ADMIXTURE en parallèle
     ADMIXTURE_RUN(ch_plink, ch_k_values)
+    // Meilleur K = erreur de validation croisée minimale sur tous les K testés
+    ADMIXTURE_BEST_K(ADMIXTURE_RUN.out.cv_error.collect())
 
     VCFTOOLS_FST(ch_filtered_vcf)
     VCFTOOLS_LD(ch_filtered_vcf)
@@ -377,7 +381,8 @@ workflow {
             GEMMA_KINSHIP.out.kinship,
             ch_pheno_gemma
         )
-        // Le module GEMMA expose 'annotated' (résultats avec lambda GC)
+        // 'annotated' = résultats GEMMA + seuils Bonferroni/suggestif par SNP
+        // (le lambda GC est calculé ensuite par PLOT_QQ)
         ch_gwas_results = GEMMA_LMM.out.annotated
 
         // Association PLINK2 complémentaire sur le même jeu QC
@@ -405,7 +410,7 @@ workflow {
     )
     PLOT_ADMIXTURE(
         ADMIXTURE_RUN.out.q_files.collect(),
-        PLINK2_QC.out.plink_files.map { bed_bim_fam -> bed_bim_fam[2] }.first()
+        PLINK2_QC.out.plink_files.map { bed_bim_fam -> bed_bim_fam[2] }
     )
     PLOT_LD_DECAY(VCFTOOLS_LD.out.ld)
     PLOT_FST(VCFTOOLS_FST.out.fst)
@@ -431,6 +436,7 @@ workflow {
         .mix(PICARD_MARKDUPLICATES.out.metrics.map { meta_file -> meta_file[1] })
         .mix(PLINK2_PCA.out.eigenvec)
         .mix(ADMIXTURE_RUN.out.q_files.flatten())
+        .mix(ADMIXTURE_BEST_K.out.summary)
         .mix(VCFTOOLS_LD.out.ld)
         .mix(VCFTOOLS_FST.out.fst)
         .mix(ch_gwas_results)

@@ -13,7 +13,7 @@ output:
     highlight: tango
     self_contained: true
 params:
-  pipeline_version: "1.0.0"
+  pipeline_version: "1.1.0"
   run_date: ""
   results_dir: "."
   maf_threshold: 0.05
@@ -135,6 +135,16 @@ if (length(q_files) > 0) {
     for (p in plots) print(p)
 } else {
     cat("Fichiers ADMIXTURE non trouvés.")
+}
+```
+
+```{r admixture_cv}
+cv_file <- file.path(params$results_dir, "admixture_cv_summary.tsv")
+if (file.exists(cv_file)) {
+    cv <- read.table(cv_file, header=TRUE, sep="\t")
+    best <- cv$K[which.min(cv$CV_error)]
+    show_table(cv, caption=sprintf(
+        "Erreur de validation croisée ADMIXTURE — K retenu (CV minimale) : %d", best))
 }
 ```
 

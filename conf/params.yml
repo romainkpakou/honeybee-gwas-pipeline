@@ -50,7 +50,7 @@ ld_window:      50       # kb — fenêtre d'élagage LD
 ld_step:        10
 ld_r2:          0.2
 pca_components: 20       # nombre de PC (doit rester < nombre d'individus)
-plink_bad_ld:   false    # mettre true seulement si < 50 individus
+plink_bad_ld:   false    # automatique si < 50 individus après QC (avertissement dans le log)
 admixture_k:    "2,3,4,5"
 
 gwas_model:     "lmm"    # "lmm" (GEMMA) ; "logistic" pour un trait binaire

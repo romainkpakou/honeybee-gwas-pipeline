@@ -3,6 +3,32 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ·
 Versionnage : [SemVer](https://semver.org/lang/fr/).
 
+## [1.1.0] - 2026-10-03
+
+Robustesse : les cas limites échouent avec un message explicite au lieu de
+planter sur une erreur d'outil obscure ou de propager une sortie vide.
+
+### Ajouté
+- `ADMIXTURE_BEST_K` : agrège les erreurs de validation croisée de tous les K
+  (`admixture_cv_summary.tsv`), retient le K à erreur minimale (`best_K.txt`) ;
+  tableau intégré au rapport HTML.
+- README : sections **Limites et perspectives** et **Transposition au contexte
+  clinique** (exigences ISO 15189, adaptations nécessaires en génétique humaine).
+- Guide cohorte réelle : section **Cluster sans accès internet**
+  (pré-téléchargement des 15 images dans `NXF_SINGULARITY_CACHEDIR`).
+
+### Modifié
+- `PLINK2_QC` : `--bad-ld` est activé automatiquement si l'effectif après QC
+  est `< 50` individus, avec avertissement dans `honeybee.qc.log`.
+  `--plink_bad_ld` permet toujours de le forcer.
+- `PLINK2_PCA` : préfixe PLINK déduit du `.bed` reçu (plus de
+  `honeybee.pruned` codé en dur), comme `PLINK2_GWAS` et `GEMMA_*`.
+
+### Corrigé
+- `GEMMA_LMM` : échec explicite si GEMMA ne produit aucun fichier
+  d'association, aucun SNP testé ou pas de colonne `p_wald` — auparavant le
+  process réussissait et l'erreur n'apparaissait qu'en aval (Manhattan / QQ).
+
 ## [1.0.0] - 2026-09-10
 
 Première version **fonctionnelle de bout en bout** : les étapes GWAS et

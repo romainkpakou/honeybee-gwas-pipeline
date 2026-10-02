@@ -49,4 +49,5 @@ jobs:
           test -f stub_results/05_gwas/gemma/output/honeybee.assoc.txt
           test -f stub_results/03_variants/annotated/cohort.annotated.vcf.gz
           test -f stub_results/06_report/gwas_report.html
+          test -f stub_results/04_population/admixture/best_K.txt
           echo "OK — le workflow produit toutes les sorties clés"

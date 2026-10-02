@@ -49,7 +49,7 @@ Points d'attention pour une vraie cohorte :
 | `geno` | 0.5 | **0.05** | max 5 % de génotypes manquants par SNP |
 | `mind` | 0.5 | **0.10** | exclut les individus mal génotypés |
 | `pca_components` | 4 | **20** | doit rester `< nombre d'individus` |
-| `plink_bad_ld` | true | **false** | `true` seulement si `< 50` individus |
+| `plink_bad_ld` | true | **false** | activé automatiquement si `< 50` individus après QC, avec avertissement |
 | `admixture_k` | "2,3" | **"2,3,4,5"** | l'abeille : 3–4 lignées (A, M, C, O) |
 | `hwe_filter` | false | false | garder `false` en population structurée |
 
@@ -68,6 +68,36 @@ nextflow run main.nf -params-file conf/my_run.yml -profile slurm -resume
 Adapter les plafonds de ressources dans `conf/my_run.yml` (`max_cpus`,
 `max_memory`, `max_time`) : ils bornent automatiquement toutes les tâches
 via `process.resourceLimits`.
+
+### Cluster sans accès internet
+
+Aucune étape n'a besoin du réseau pendant l'analyse : la base SnpEff est
+construite localement depuis le FASTA et le GFF3 (`SNPEFF_BUILD`), sans
+`snpEff download`. En revanche, **les images de conteneurs** (15 images, toutes
+épinglées par tag) doivent être téléchargées à l'avance, depuis un nœud qui a
+accès à internet (nœud de login, poste de travail), vers un cache partagé :
+
+```bash
+# Cache partagé, visible des nœuds de calcul
+export NXF_SINGULARITY_CACHEDIR=/chemin/partage/singularity_cache
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
+
+# Liste des images réellement utilisées par le pipeline (aucun outil lancé)
+nextflow inspect main.nf -profile stub \
+    | grep -o '"container": "[^"]*"' | cut -d'"' -f4 | sort -u > containers.txt
+
+# Téléchargement sous le nom attendu par Nextflow (« / » et « : » → « - »)
+while read -r img; do
+    out="$NXF_SINGULARITY_CACHEDIR/$(echo "$img" | tr '/:' '--').img"
+    [ -f "$out" ] || singularity pull "$out" "docker://$img"
+done < containers.txt
+```
+
+Puis lancer avec la même variable `NXF_SINGULARITY_CACHEDIR` exportée (par
+exemple dans le script de soumission SLURM) : Nextflow utilise les images du
+cache sans tenter de téléchargement. Avec Docker, l'équivalent est
+`docker pull` de chaque image de `containers.txt`, puis `docker save` /
+`docker load` sur la machine isolée.
 
 ---
 

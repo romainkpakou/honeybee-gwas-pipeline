@@ -149,7 +149,7 @@ déduplication, stats variants) et rapport SnpEff (227 variants annotés —
 | `--admixture_k` | `2,3,4,5` | Valeurs de K à tester |
 | `--gff` | `Amel_HAv3.1.gff.gz` | Annotation GFF3 → active SnpEff (vide = désactivé) |
 | `--pca_components` | 20 | Nombre de PC (doit être `<` nombre d'individus) |
-| `--plink_bad_ld` | `false` | Forcer l'élagage LD si `< 50` individus |
+| `--plink_bad_ld` | `false` | Forcer `--bad-ld` (déjà automatique si `< 50` individus après QC) |
 | `--hwe_filter` | `false` | Filtrage HWE (déconseillé en population structurée) |
 | `--phenotype_file` | `null` | Fichier phénotypes (sinon colonne `phenotype` du samplesheet) |
 | `--gwas_model` | `lmm` | Modèle GWAS : `lmm` (GEMMA) ou `logistic` (trait binaire) |
@@ -181,9 +181,63 @@ Tous les paramètres sont modifiables dans `conf/params.yml`.
 
 ---
 
+## Limites et perspectives
+
+Le jeu de démonstration (5 génomes) valide le **fonctionnement technique** : à
+cet effectif, l'élagage LD repose sur des r² instables (`--bad-ld`), la PCA est
+limitée à 4 composantes et le GWAS n'a aucune puissance. Certaines limites
+restent vraies en production :
+
+| Limite | Conséquence | Piste |
+|---|---|---|
+| **Puissance du GWAS** | Elle dépend de la taille d'effet, de l'héritabilité et de la fréquence allélique. Avec quelques dizaines d'individus, seuls des loci à très fort effet sont détectables ; des effets modérés demandent plusieurs centaines d'individus phénotypés. | Calcul de puissance préalable selon le trait étudié ; méta-analyse entre ruchers. |
+| **Pas de BQSR ni de VQSR** | Il n'existe pas de jeu de sites connus de confiance pour *A. mellifera* (équivalent de dbSNP / Mills / HapMap chez l'humain). Le filtrage repose donc sur des seuils fixes (*hard filtering* : QD, FS, MQ, SOR…). | BQSR par amorçage (*bootstrapping*) sur les appels les plus confiants, à valider sur un sous-ensemble. |
+| **Ploïdie** | HaplotypeCaller est lancé en diploïde (défaut). Les faux-bourdons sont haploïdes : pour ces échantillons, `--sample-ploidy 1` serait plus juste. | Ploïdie par échantillon via le samplesheet. |
+| **Choix du K (ADMIXTURE)** | Le K retenu automatiquement minimise l'erreur de validation croisée (`best_K.txt`). Quand les erreurs de plusieurs K sont proches, le choix final reste une interprétation biologique (lignées A, M, C, O attendues). | Comparer avec la PCA et la littérature avant de conclure. |
+| **Annotation SnpEff** | La base est construite depuis le GFF3 NCBI (Release 104, Amel_HAv3.1). Elle n'est valide que pour cet assemblage. | Reconstruire la base (`--gff`) à chaque changement d'assemblage ou d'annotation. |
+| **Indépendance des marqueurs** | La PCA et ADMIXTURE supposent des SNPs indépendants ; les seuils d'élagage LD (50 kb, r² 0,2) sont génériques. | Ajuster la fenêtre au déclin du LD observé (`PLOT_LD_DECAY`). |
+
+---
+
+## Transposition au contexte clinique
+
+Le pipeline est conçu pour l'abeille, mais son architecture répond à des
+exigences que l'on retrouve en génomique médicale (laboratoire accrédité
+ISO 15189) :
+
+- **Traçabilité des versions** : chaque conteneur est épinglé par tag et chaque
+  process écrit un `versions.yml` ; le rapport Nextflow (`pipeline_info/`)
+  conserve la trace, la chronologie et le DAG de chaque exécution.
+- **Reproductibilité** : même code, mêmes conteneurs, mêmes paramètres
+  (`-params-file`) ⇒ mêmes résultats ; `-resume` reprend sans recalculer.
+- **Échec explicite plutôt que résultat incomplet** : une étape qui ne produit
+  rien d'exploitable (aucun SNP testé par GEMMA, aucune erreur CV ADMIXTURE)
+  arrête le pipeline avec un message clair au lieu de propager une sortie vide.
+- **Séparation QC / analyse / rapport** et rapport généré automatiquement
+  (MultiQC + R Markdown), sans copier-coller manuel.
+- **Exécution sur infrastructure isolée** : SLURM + Singularity, images
+  pré-téléchargées (voir
+  [Cluster sans accès internet](docs/running_a_real_cohort.md#cluster-sans-accès-internet)).
+- **Non-régression** : CI GitHub Actions (`nextflow lint` + run `-stub`
+  complet) à chaque modification.
+
+Ce qu'il faudrait ajouter pour un usage diagnostic en génétique humaine — ce
+pipeline **n'est pas validé** pour cet usage :
+
+| Domaine | Adaptation |
+|---|---|
+| Référence | GRCh38 (+ décoys, ALT-aware) |
+| Variant calling | BQSR (dbSNP, Mills/1000G indels), VQSR ou filtrage par modèle, ploïdie des chromosomes sexuels |
+| Annotation | Ensembl VEP avec ClinVar, gnomAD, scores de prédiction ; transcrits MANE Select |
+| Interprétation | Classification ACMG/AMP, restriction aux panels de gènes de l'indication |
+| Validation analytique | Sensibilité / précision mesurées sur les échantillons de référence GIAB (hap.py), seuils de couverture par région d'intérêt |
+| Assurance qualité | Gestion documentaire des versions validées, identito-vigilance (contrôle de sexe, concordance d'échantillons), revalidation à chaque changement |
+
+---
+
 ## Citation
 Romain KPAKOU (2026). *honeybee-gwas-pipeline: End-to-end WGS/GWAS pipeline
-for* Apis mellifera mellifera *population genomics*. v1.0.0.
+for* Apis mellifera mellifera *population genomics*. v1.1.0.
 https://github.com/romainkpakou/honeybee-gwas-pipeline
 
 ---

@@ -27,7 +27,8 @@
     honeybee.pruned.2.Q → proportions d'ascendance pour K=2
     honeybee.pruned.3.Q → proportions d'ascendance pour K=3
     honeybee.pruned.2.P → fréquences alléliques ancestrales K=2
-    cv_error.txt        → erreurs CV pour sélection du meilleur K
+    cv_K<k>.txt         → erreur CV de chaque K
+    admixture_cv_summary.tsv + best_K.txt → K retenu (ADMIXTURE_BEST_K)
 */
 
 process ADMIXTURE_RUN {
@@ -105,5 +106,52 @@ process ADMIXTURE_RUN {
     touch honeybee.pruned.${k}.P
     touch cv_K${k}.txt
     touch versions.yml
+    """
+}
+
+// ── Sélection du meilleur K (erreur de validation croisée minimale) ──────────
+// Agrège les cv_K*.txt de tous les jobs ADMIXTURE_RUN : un tableau récapitulatif
+// et le K retenu, au lieu d'une lecture manuelle des logs. Le K minimisant
+// l'erreur CV est un critère statistique ; l'interprétation biologique
+// (sous-espèces attendues) reste à faire, surtout si les erreurs sont proches.
+process ADMIXTURE_BEST_K {
+    tag "admixture_best_k"
+    label 'process_low'
+
+    publishDir "${params.outdir}/04_population/admixture", mode: 'copy'
+
+    container 'quay.io/biocontainers/admixture:1.3.0--0'
+
+    input:
+    path cv_files
+
+    output:
+    path "admixture_cv_summary.tsv", emit: summary
+    path "best_K.txt",               emit: best_k
+
+    script:
+    """
+    # cv_K*.txt : "K=<k>\\tCV_error=<valeur>" — un fichier par job
+    printf "K\\tCV_error\\n" > admixture_cv_summary.tsv
+    cat ${cv_files} \\
+        | sed -e 's/^K=//' -e 's/CV_error=//' \\
+        | awk -F'\\t' '\$2 != ""' \\
+        | sort -t\$'\\t' -k1,1n >> admixture_cv_summary.tsv
+
+    if [ "\$(tail -n +2 admixture_cv_summary.tsv | wc -l)" -eq 0 ]; then
+        echo "ERREUR : aucune erreur CV exploitable dans les logs ADMIXTURE." >&2
+        exit 1
+    fi
+
+    tail -n +2 admixture_cv_summary.tsv | sort -t\$'\\t' -k2,2g | head -1 | cut -f1 > best_K.txt
+    echo "=== Erreurs de validation croisée ==="
+    cat admixture_cv_summary.tsv
+    echo "K retenu (CV minimale) : \$(cat best_K.txt)"
+    """
+
+    stub:
+    """
+    printf "K\\tCV_error\\n2\\t0.5\\n" > admixture_cv_summary.tsv
+    echo 2 > best_K.txt
     """
 }

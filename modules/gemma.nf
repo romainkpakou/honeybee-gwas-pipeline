@@ -149,8 +149,24 @@ process GEMMA_LMM {
     ASSOC=output/honeybee.assoc.txt
     ANNOT=output/honeybee.assoc.annotated.txt
 
+    # Échec explicite plutôt qu'une sortie vide propagée en silence jusqu'aux
+    # scripts R (Manhattan / QQ) : un GWAS sans SNP testé n'est pas un résultat.
+    if [ ! -s "\$ASSOC" ]; then
+        echo "ERREUR : GEMMA n'a produit aucun fichier d'association (\$ASSOC)." \\
+             "Voir output/honeybee.log.txt." >&2
+        exit 1
+    fi
     N_SNPS=\$(tail -n +2 "\$ASSOC" | wc -l)
-    P_COL=\$(head -1 "\$ASSOC" | tr '\\t' '\\n' | grep -nx 'p_wald' | cut -d: -f1)
+    P_COL=\$(head -1 "\$ASSOC" | tr '\\t' '\\n' | grep -nx 'p_wald' | cut -d: -f1 || true)
+    if [ "\$N_SNPS" -eq 0 ]; then
+        echo "ERREUR : aucun SNP testé par GEMMA — vérifier les filtres QC" \\
+             "(--maf, --geno) et le nombre d'individus phénotypés." >&2
+        exit 1
+    fi
+    if [ -z "\$P_COL" ]; then
+        echo "ERREUR : colonne p_wald absente de \$ASSOC (option -lmm modifiée ?)." >&2
+        exit 1
+    fi
     BONF=\$(awk -v n="\$N_SNPS" 'BEGIN { if (n > 0) printf "%.6e", 0.05 / n; else print "NA" }')
 
     echo "SNPs testés               : \$N_SNPS"

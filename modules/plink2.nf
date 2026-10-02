@@ -66,7 +66,6 @@ process PLINK2_QC {
 
     script:
     def hwe_opt = params.hwe_filter ? "--hwe ${params.hwe}" : ''
-    def bad_ld  = params.plink_bad_ld ? '--bad-ld' : ''
     """
     # ── Étape 1 : Conversion VCF → PLINK + filtres QC ────────────────────────
     plink2 \\
@@ -88,10 +87,26 @@ process PLINK2_QC {
     wc -l honeybee.qc.bim >> honeybee.qc.log
 
     # ── Étape 2 : Calcul du LD entre SNPs ────────────────────────────────────
+    # PLINK2 refuse --indep-pairwise sous 50 individus (estimation du r² trop
+    # instable) sauf avec --bad-ld. Le seuil est vérifié ici sur l'effectif
+    # réel après QC (--mind peut exclure des individus) : --bad-ld est ajouté
+    # automatiquement avec un avertissement explicite, ou forcé par
+    # --plink_bad_ld.
+    N_IND=\$(wc -l < honeybee.qc.fam)
+    BAD_LD=""
+    if [ "${params.plink_bad_ld}" = "true" ]; then
+        BAD_LD="--bad-ld"
+    elif [ "\$N_IND" -lt 50 ]; then
+        BAD_LD="--bad-ld"
+        echo "AVERTISSEMENT : \$N_IND individus après QC (< 50) — --bad-ld activé" \\
+             "automatiquement ; l'élagage LD repose sur des r² peu fiables." \\
+            | tee -a honeybee.qc.log >&2
+    fi
+
     plink2 \\
         --bfile honeybee.qc \\
         --allow-extra-chr \\
-        ${bad_ld} \\
+        \$BAD_LD \\
         --indep-pairwise ${params.ld_window} ${params.ld_step} ${params.ld_r2} \\
         --out honeybee.ldprune \\
         --threads ${task.cpus}
@@ -146,18 +161,20 @@ process PLINK2_PCA {
     path "versions.yml",      emit: versions
 
     script:
+    // Préfixe PLINK déduit du .bed fourni, comme PLINK2_GWAS et GEMMA
+    def prefix = bed.name - ~/\.bed$/
     """
     # Fréquences alléliques calculées explicitement puis réinjectées : PLINK2
     # exige une source de fréquences pour --pca dès que l'effectif est faible.
     plink2 \\
-        --bfile honeybee.pruned \\
+        --bfile ${prefix} \\
         --allow-extra-chr \\
         --freq \\
         --out honeybee \\
         --threads ${task.cpus}
 
     plink2 \\
-        --bfile honeybee.pruned \\
+        --bfile ${prefix} \\
         --allow-extra-chr \\
         --read-freq honeybee.afreq \\
         --pca ${params.pca_components} \\
